@@ -1,0 +1,52 @@
+[project]
+name = "dataforge"
+version = "0.1.0"
+description = "High-performance fake data generator for testing"
+readme = "README.md"
+authors = [
+    { name = "Ivan Rener", email = "ivan.rener@multitude.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+dataforge = "dataforge.cli:main"
+
+[project.entry-points."dataforge.providers"]
+address = "dataforge.providers.address"
+automotive = "dataforge.providers.automotive"
+barcode = "dataforge.providers.barcode"
+color = "dataforge.providers.color"
+company = "dataforge.providers.company"
+crypto = "dataforge.providers.crypto"
+datetime = "dataforge.providers.datetime"
+ecommerce = "dataforge.providers.ecommerce"
+education = "dataforge.providers.education"
+file = "dataforge.providers.file"
+finance = "dataforge.providers.finance"
+geo = "dataforge.providers.geo"
+government = "dataforge.providers.government"
+internet = "dataforge.providers.internet"
+lorem = "dataforge.providers.lorem"
+medical = "dataforge.providers.medical"
+misc = "dataforge.providers.misc"
+network = "dataforge.providers.network"
+payment = "dataforge.providers.payment"
+person = "dataforge.providers.person"
+phone = "dataforge.providers.phone"
+profile = "dataforge.providers.profile"
+science = "dataforge.providers.science"
+text = "dataforge.providers.text"
+ai_prompt = "dataforge.providers.ai_prompt"
+llm = "dataforge.providers.llm"
+ai_chat = "dataforge.providers.ai_chat"
+
+[project.entry-points.pytest11]
+dataforge = "dataforge.pytest_plugin"
+
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.9"]
+
+[build-system]
+requires = ["uv_build>=0.10.4,<0.11.0"]
+build-backend = "uv_build"

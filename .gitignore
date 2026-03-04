@@ -1,0 +1,45 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+
+# Build / packaging artifacts
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+env/
+.tox/
+
+# Test and coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Linter / type-checker caches
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+
+# Benchmark / profiling output
+benchmark_*.json
+*.prof
+*.pstats
+
+# IDE / editor configs
+.vscode/
+.idea/
+*.code-workspace
+.editorconfig
+
+# OS artifacts
+.DS_Store
+Thumbs.db
+nul
