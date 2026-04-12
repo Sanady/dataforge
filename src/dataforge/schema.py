@@ -98,6 +98,7 @@ class Schema:
                 spec = fields[col_name]  # type: ignore[index]
                 if isinstance(spec, dict):
                     field_name = spec.get("field", col_name)
+                    pipe_transforms = spec.get("_pipe_transforms")
                 elif callable(spec):
                     idx = len(columns)
                     columns.append(col_name)
@@ -106,11 +107,35 @@ class Schema:
                     continue
                 else:
                     field_name = spec
+                    pipe_transforms = None
                 provider_attr, method_name = forge._resolve_field(field_name)
                 provider = getattr(forge, provider_attr)
                 method = getattr(provider, method_name)
                 columns.append(col_name)
-                callables.append(method)
+                if pipe_transforms:
+                    # Wrap the method with transform pipeline via row lambda
+                    idx = len(columns) - 1
+                    callables.append(method)
+                    _chain = tuple(pipe_transforms)
+                    _src_col = col_name
+
+                    def _make_pipe_lambda(
+                        _c: str,
+                        _t: tuple[Any, ...],
+                    ) -> Callable[..., Any]:
+                        def _pipe_fn(row: dict[str, Any]) -> Any:
+                            val = row[_c]
+                            for fn in _t:
+                                val = fn(val)
+                            return val
+
+                        return _pipe_fn
+
+                    row_lambdas[idx] = _make_pipe_lambda(_src_col, _chain)
+                    # Mark as ROW_LAMBDA so _apply_row_lambdas overrides it
+                    callables[-1] = method  # keep the method to generate base value
+                else:
+                    callables.append(method)
 
             for col_name, _constraint in dependent_order:
                 columns.append(col_name)
@@ -675,6 +700,49 @@ class Schema:
 
         return written
 
+    def to_excel(
+        self,
+        path: str,
+        count: int = 10,
+        sheet_name: str = "Sheet1",
+    ) -> int:
+        """Generate rows and write as an XLSX file. Requires openpyxl.
+
+        Parameters
+        ----------
+        path : str
+            Output file path (should end in ``.xlsx``).
+        count : int
+            Number of rows to generate.
+        sheet_name : str
+            Worksheet name (default ``"Sheet1"``).
+
+        Returns
+        -------
+        int
+            Number of rows written.
+        """
+        try:
+            from openpyxl import Workbook
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "openpyxl is required for to_excel(). "
+                "Install it with: pip install openpyxl"
+            ) from exc
+
+        columns = self._columns
+        str_data = self._generate_string_columns(count)
+
+        wb = Workbook(write_only=True)
+        ws = wb.create_sheet(title=sheet_name)
+        ws.append(list(columns))
+
+        for row_idx in range(count):
+            ws.append([str_data[col_idx][row_idx] for col_idx in range(len(columns))])
+
+        wb.save(path)
+        return count
+
     def to_schema_dict(self, count: int = 10) -> dict[str, Any]:
         """Export this schema's definition as a serializable dict."""
         from dataforge.schema_io import schema_to_dict
@@ -722,6 +790,49 @@ class Schema:
 
     def __repr__(self) -> str:
         return f"Schema(columns={list(self._columns)!r})"
+
+    def validate(
+        self,
+        data: "list[dict[str, Any]] | str",
+        max_rows: int = 10_000,
+    ) -> Any:
+        """Validate data against this schema's field contract.
+
+        Parameters
+        ----------
+        data : list of dict, or str (CSV file path)
+            The data to validate.
+        max_rows : int
+            Maximum rows to validate (for CSV).
+
+        Returns
+        -------
+        ValidationReport
+            A report with any violations found.
+        """
+        from dataforge.validation import validate_records, validate_csv
+
+        # Build field_map from this schema's spec
+        field_map: dict[str, str] = {}
+        fields_spec = self._fields_spec
+        if isinstance(fields_spec, dict):
+            for col, spec in fields_spec.items():
+                if isinstance(spec, str):
+                    field_map[col] = spec
+                elif isinstance(spec, dict):
+                    field_map[col] = spec.get("field", col)
+        else:
+            for f in fields_spec:
+                field_map[f] = f
+
+        null_fields: dict[str, float] | None = None
+        if self._null_fields:
+            cols = self._columns
+            null_fields = {cols[idx]: prob for idx, prob in self._null_fields.items()}
+
+        if isinstance(data, str):
+            return validate_csv(data, field_map, null_fields, max_rows=max_rows)
+        return validate_records(data, field_map, null_fields)
 
     def to_arrow(
         self,

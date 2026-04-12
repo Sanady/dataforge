@@ -55,7 +55,7 @@ from dataforge.schema import Schema
 from dataforge.relational import RelationalSchema
 from dataforge.schema_io import save_schema, load_schema
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __all__ = [
     "DataForge",
     "Schema",

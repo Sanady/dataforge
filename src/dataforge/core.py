@@ -146,6 +146,24 @@ _TYPE_FALLBACK_NAMES: dict[str, str] = {
 }
 
 
+class _CustomFields:
+    """Attribute-accessible container for user-defined fields."""
+
+    __slots__ = ("_fields",)
+
+    def __init__(self) -> None:
+        self._fields: dict[str, Any] = {}
+
+    def __getattr__(self, name: str) -> Any:
+        try:
+            return self._fields[name]
+        except KeyError:
+            raise AttributeError(name) from None
+
+    def __contains__(self, name: object) -> bool:
+        return name in self._fields
+
+
 def _resolve_type_annotation(annotation: Any) -> type | None:
     """Extract the concrete type from a possibly-wrapped annotation."""
     import typing
@@ -246,14 +264,45 @@ class DataForge:
         "_providers",
         "_locale_cache",
         "_unique_proxy",
+        "_locales",
+        "_locale_forges",
+        "_custom_fields",
     )
 
-    def __init__(self, locale: str = "en_US", seed: int | None = None) -> None:
+    def __init__(
+        self, locale: str | list[str] = "en_US", seed: int | None = None
+    ) -> None:
         self._engine = RandomEngine(seed=seed)
-        self._locale = locale
+        self._custom_fields = _CustomFields()
+        self._unique_proxy: Any = None
+
+        if isinstance(locale, list):
+            if not locale:
+                raise ValueError("locale list must not be empty.")
+            self._locale = locale[0]
+            self._locales: tuple[str, ...] = tuple(locale)
+            children: list[DataForge] = []
+            for i, loc in enumerate(locale):
+                child = DataForge.__new__(DataForge)
+                child._engine = RandomEngine(
+                    seed=(seed + i + 1) if seed is not None else None
+                )
+                child._locale = loc
+                child._locales = (loc,)
+                child._locale_forges = ()
+                child._providers = {}
+                child._locale_cache = {}
+                child._unique_proxy = None
+                child._custom_fields = _CustomFields()
+                children.append(child)
+            self._locale_forges: tuple[DataForge, ...] = tuple(children)
+        else:
+            self._locale = locale
+            self._locales = (locale,)
+            self._locale_forges = ()
+
         self._providers: dict[str, BaseProvider] = {}
         self._locale_cache: dict[str, ModuleType] = {}
-        self._unique_proxy: Any = None
 
     # Dynamic provider access via registry
 
@@ -353,8 +402,62 @@ class DataForge:
 
         register_runtime_provider(prov_name, provider_cls, locale_modules)
 
+    def define(
+        self,
+        name: str,
+        elements: list[Any] | tuple[Any, ...] | None = None,
+        weights: list[float] | tuple[float, ...] | None = None,
+        func: "Callable[..., Any] | None" = None,
+    ) -> None:
+        """Define a custom field for ad-hoc data generation.
+
+        Examples
+        --------
+        >>> forge = DataForge(seed=42)
+        >>> forge.define("status", elements=["active", "inactive", "pending"])
+        >>> forge.status()
+        'active'
+        >>> forge.define("score", func=lambda: forge.misc.random_int(1, 100))
+        >>> forge.score()
+        42
+        """
+        if func is not None:
+            self._custom_fields._fields[name] = func
+        elif elements is not None:
+            data = tuple(elements)
+            if weights is not None:
+                wt = list(weights)
+                engine = self._engine
+
+                def _weighted(count: int = 1) -> Any:
+                    if count == 1:
+                        return engine._rng.choices(data, weights=wt, k=1)[0]
+                    return engine._rng.choices(data, weights=wt, k=count)
+
+                self._custom_fields._fields[name] = _weighted
+            else:
+                engine = self._engine
+
+                def _uniform(count: int = 1) -> Any:
+                    if count == 1:
+                        return engine._rng.choice(data)
+                    return engine._rng.choices(data, k=count)
+
+                self._custom_fields._fields[name] = _uniform
+        else:
+            raise ValueError("define() requires either 'elements' or 'func'.")
+
     def __getattr__(self, name: str) -> Any:
-        """Dynamic attribute access for registered providers."""
+        """Dynamic attribute access for custom fields, multi-locale, and providers."""
+        # Check custom fields first
+        cf = object.__getattribute__(self, "_custom_fields")
+        if name in cf:
+            return cf._fields[name]
+        # Multi-locale: delegate to a random child forge
+        locale_forges = object.__getattribute__(self, "_locale_forges")
+        if locale_forges:
+            child = object.__getattribute__(self, "_engine")._rng.choice(locale_forges)
+            return getattr(child, name)
         # Check if it's a cached provider
         providers = object.__getattribute__(self, "_providers")
         if name in providers:
@@ -374,8 +477,11 @@ class DataForge:
         self._engine.seed(value)
 
     def copy(self, seed: int | None = None) -> "DataForge":
-        """Create a new DataForge instance with the same locale."""
-        return DataForge(locale=self._locale, seed=seed)
+        """Create a new DataForge instance with the same locale(s)."""
+        loc: str | list[str] = (
+            list(self._locales) if len(self._locales) > 1 else self._locale
+        )
+        return DataForge(locale=loc, seed=seed)
 
     # Schema API
 
@@ -437,8 +543,13 @@ class DataForge:
 
     @property
     def locale(self) -> str:
-        """The currently active locale string (e.g. ``"en_US"``)."""
+        """The primary locale string (e.g. ``"en_US"``)."""
         return self._locale
+
+    @property
+    def locales(self) -> tuple[str, ...]:
+        """All configured locales (tuple of locale strings)."""
+        return self._locales
 
     # Internal helpers
 
@@ -469,6 +580,10 @@ class DataForge:
 
     def _resolve_field(self, field: str) -> tuple[str, str]:
         """Resolve a field name to (provider_attr, method_name)."""
+        # Check custom fields first
+        if field in self._custom_fields:
+            return ("_custom_fields", field)
+
         # Dotted path: "person.first_name" → ("person", "first_name")
         if "." in field:
             provider_attr, method_name = field.split(".", 1)
@@ -574,6 +689,18 @@ class DataForge:
         """Generate fake data as a pandas DataFrame. Requires pandas."""
         return self.schema(fields).to_dataframe(count=count)
 
+    def to_excel(
+        self,
+        fields: list[str] | dict[str, str],
+        path: str,
+        count: int = 10,
+        sheet_name: str = "Sheet1",
+    ) -> int:
+        """Generate fake data and write as XLSX. Requires openpyxl. Returns rows written."""
+        return self.schema(fields).to_excel(
+            path=path, count=count, sheet_name=sheet_name
+        )
+
     def stream_to_csv(
         self,
         fields: list[str] | dict[str, str],
@@ -643,6 +770,8 @@ class DataForge:
         )
 
     def __repr__(self) -> str:
+        if len(self._locales) > 1:
+            return f"DataForge(locales={list(self._locales)!r})"
         return f"DataForge(locale={self._locale!r})"
 
     # Introspection API
@@ -826,6 +955,122 @@ class DataForge:
                 f"No columns on {model.__name__} could be mapped to "
                 f"DataForge fields. Ensure the model uses recognisable "
                 f"column names (e.g. 'first_name', 'email', 'city')."
+            )
+
+        return Schema(self, mapped)
+
+    def schema_from_dataclass(self, cls: type) -> "Any":
+        """Create a Schema by introspecting a ``@dataclass`` class.
+
+        Examples
+        --------
+        >>> from dataclasses import dataclass
+        >>> @dataclass
+        ... class User:
+        ...     first_name: str
+        ...     email: str
+        ...     age: int
+        >>> forge = DataForge(seed=1)
+        >>> schema = forge.schema_from_dataclass(User)
+        """
+        import dataclasses
+
+        if not dataclasses.is_dataclass(cls):
+            raise TypeError(f"Expected a dataclass, got {cls!r}")
+
+        from dataforge.schema import Schema
+        from dataforge.registry import get_field_map
+
+        field_map = get_field_map()
+        mapped: dict[str, str] = {}
+
+        import warnings
+
+        for dc_field in dataclasses.fields(cls):
+            name = dc_field.name
+            # Tier 1: exact name match in registry
+            if name in field_map:
+                mapped[name] = name
+                continue
+            # Tier 2: alias heuristic
+            alias = _FIELD_ALIASES.get(name)
+            if alias and alias in field_map:
+                mapped[name] = alias
+                continue
+            # Tier 3: type-based fallback
+            annotation = dc_field.type
+            if annotation is not None:
+                type_field = _type_fallback(annotation)
+                if type_field and type_field in field_map:
+                    mapped[name] = type_field
+                    continue
+            warnings.warn(
+                f"Dataclass field '{name}' on {cls.__name__} "
+                f"could not be mapped to a DataForge field — skipping.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        if not mapped:
+            raise ValueError(
+                f"No fields on {cls.__name__} could be mapped to "
+                f"DataForge fields. Ensure the class uses recognisable "
+                f"field names (e.g. 'first_name', 'email', 'city')."
+            )
+
+        return Schema(self, mapped)
+
+    def schema_from_typed_dict(self, cls: type) -> "Any":
+        """Create a Schema by introspecting a ``TypedDict`` class.
+
+        Examples
+        --------
+        >>> from typing import TypedDict
+        >>> class UserDict(TypedDict):
+        ...     first_name: str
+        ...     email: str
+        >>> forge = DataForge(seed=1)
+        >>> schema = forge.schema_from_typed_dict(UserDict)
+        """
+        annotations = getattr(cls, "__annotations__", None)
+        if annotations is None:
+            raise TypeError(f"Expected a TypedDict class, got {cls!r}")
+
+        from dataforge.schema import Schema
+        from dataforge.registry import get_field_map
+
+        field_map = get_field_map()
+        mapped: dict[str, str] = {}
+
+        import warnings
+
+        for name, annotation in annotations.items():
+            # Tier 1: exact name match in registry
+            if name in field_map:
+                mapped[name] = name
+                continue
+            # Tier 2: alias heuristic
+            alias = _FIELD_ALIASES.get(name)
+            if alias and alias in field_map:
+                mapped[name] = alias
+                continue
+            # Tier 3: type-based fallback
+            type_field = _type_fallback(annotation)
+            if type_field and type_field in field_map:
+                mapped[name] = type_field
+                continue
+            warnings.warn(
+                f"TypedDict field '{name}' on {cls.__name__} "
+                f"could not be mapped to a DataForge field — skipping.",
+                UserWarning,
+                stacklevel=2,
+            )
+
+        if not mapped:
+            raise ValueError(
+                f"No fields on {cls.__name__} could be mapped to "
+                f"DataForge fields. Ensure the class uses recognisable "
+                f"field names (e.g. 'first_name', 'email', 'city')."
             )
 
         return Schema(self, mapped)

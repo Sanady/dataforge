@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import sys
+from typing import Any
 
 from dataforge import DataForge, __version__
 from dataforge.registry import get_field_map
@@ -166,7 +167,92 @@ def _build_parser() -> argparse.ArgumentParser:
         type=float,
         help="Apply chaos/data-quality transformations at the given rate (0.0-1.0).",
     )
+    parser.add_argument(
+        "--serve",
+        action="store_true",
+        help="Start an HTTP mock data server. Requires --schema or fields. "
+        "Use --port to set the port (default: 8080).",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8080,
+        help="Port for the mock data server (default: 8080). Used with --serve.",
+    )
     return parser
+
+
+def _run_serve(args: argparse.Namespace) -> int:
+    """Start an HTTP mock data server using stdlib http.server."""
+    from http.server import HTTPServer, BaseHTTPRequestHandler
+
+    forge = DataForge(locale=args.locale, seed=args.seed)
+
+    # Determine fields from --schema or positional args
+    if args.schema:
+        from dataforge.schema_io import load_schema, dict_to_schema_args
+
+        try:
+            schema_def = load_schema(args.schema)
+        except (FileNotFoundError, ValueError) as exc:
+            print(f"Error loading schema: {exc}", file=sys.stderr)
+            return 1
+        schema_fields, schema_count, schema_null, schema_unique = dict_to_schema_args(
+            schema_def
+        )
+        null_fields = schema_null
+    else:
+        if not args.fields:
+            args.fields = ["first_name", "last_name", "email"]
+        field_specs = [_parse_field_spec(f) for f in args.fields]
+        if any(col != field for col, field in field_specs):
+            schema_fields = {col: field for col, field in field_specs}
+        else:
+            schema_fields = [field for _, field in field_specs]
+        null_fields = None
+
+    count_default = args.count
+
+    class MockHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            # Parse count from query string: /data?count=50
+            path = self.path
+            count = count_default
+            if "?" in path:
+                qs = path.split("?", 1)[1]
+                for pair in qs.split("&"):
+                    if pair.startswith("count="):
+                        try:
+                            count = int(pair.split("=", 1)[1])
+                        except ValueError:
+                            pass
+
+            schema = forge.schema(schema_fields, null_fields=null_fields)
+            rows = schema.generate(count=count)
+            body = json.dumps(rows, indent=2, ensure_ascii=False, default=str)
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(body.encode("utf-8"))
+
+        def log_message(self, format: str, *a: Any) -> None:
+            print(f"[serve] {self.address_string()} {format % a}", file=sys.stderr)
+
+    port = args.port
+    server = HTTPServer(("0.0.0.0", port), MockHandler)
+    print(
+        f"DataForge mock server running on http://localhost:{port}/\n"
+        f"  GET /?count=N  →  returns N rows of JSON data\n"
+        f"  Press Ctrl+C to stop.",
+        file=sys.stderr,
+    )
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nServer stopped.", file=sys.stderr)
+    return 0
 
 
 def _format_value(value: object) -> str:
@@ -219,6 +305,9 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"Anonymized output written to {output}", file=sys.stderr)
         return 0
+
+    if args.serve:
+        return _run_serve(args)
 
     if args.list_providers:
         from dataforge.registry import get_provider_info
