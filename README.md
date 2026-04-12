@@ -2001,6 +2001,17 @@ The [`examples/`](examples/) directory contains comprehensive real-world usage e
 | [`08_streaming.py`](examples/08_streaming.py) | HTTP/Kafka/RabbitMQ streaming with rate limiting |
 | [`09_tui.py`](examples/09_tui.py) | Interactive TUI launch and keyboard shortcuts |
 | [`10_real_world_scenarios.py`](examples/10_real_world_scenarios.py) | Combined scenarios: e-commerce, healthcare, IoT, API testing |
+| [`11_faker_compat.py`](examples/11_faker_compat.py) | Faker compatibility layer — migrating from faker to DataForge |
+| [`12_multi_locale.py`](examples/12_multi_locale.py) | Multi-locale data generation for internationalized test data |
+| [`13_dynamic_fields.py`](examples/13_dynamic_fields.py) | Dynamic fields with `define()` — custom data pools and generators |
+| [`14_transform_pipelines.py`](examples/14_transform_pipelines.py) | Transform pipelines with `pipe()` — post-generation data transformation |
+| [`15_type_driven_schema.py`](examples/15_type_driven_schema.py) | Type-driven schema generation from dataclasses and TypedDicts |
+| [`16_data_validation.py`](examples/16_data_validation.py) | Data contract validation — ensuring data quality with semantic rules |
+| [`17_hypothesis_bridge.py`](examples/17_hypothesis_bridge.py) | Hypothesis strategy bridge — property-based testing with DataForge |
+| [`18_mock_server.py`](examples/18_mock_server.py) | HTTP mock data server — serving fake data over HTTP |
+| [`19_xlsx_export.py`](examples/19_xlsx_export.py) | XLSX export — generating Excel spreadsheets with DataForge schemas |
+| [`20_distribution_fitting.py`](examples/20_distribution_fitting.py) | Distribution fitting — inferring statistical distributions from data |
+| [`21_advanced_scenarios.py`](examples/21_advanced_scenarios.py) | Advanced multi-feature workflows combining DataForge capabilities |
 
 ## Benchmarks
 
