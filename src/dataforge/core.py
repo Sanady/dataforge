@@ -219,19 +219,6 @@ def _type_fallback(annotation: Any) -> str | None:
     return None
 
 
-def _pydantic_heuristic(field_name: str) -> str | None:
-    """Map a Pydantic field name to a DataForge field name (or None)."""
-    return _FIELD_ALIASES.get(field_name)
-
-
-def _sqlalchemy_heuristic(col_name: str, column: "Any") -> str | None:
-    """Map a SQLAlchemy column name to a DataForge field name (or None)."""
-    alias = _FIELD_ALIASES.get(col_name)
-    if alias:
-        return alias
-    return None
-
-
 _SA_TYPE_MAP: dict[str, str | None] = {
     "String": None,
     "Text": "paragraph",
@@ -254,6 +241,76 @@ def _sqlalchemy_type_fallback(column: "Any") -> str | None:
     col_type = type(column.type)
     type_name = col_type.__name__
     return _SA_TYPE_MAP.get(type_name)
+
+
+def _introspect_fields(
+    model_name: str,
+    field_items: list[tuple[str, Any]],
+    source_label: str,
+    type_resolver: Callable[[Any], str | None] | None = None,
+    error_noun: str = "fields",
+) -> dict[str, str]:
+    """Shared 3-tier introspection: exact → alias → type fallback → warn.
+
+    Parameters
+    ----------
+    model_name : str
+        Name of the model/class (for error/warning messages).
+    field_items : list of (name, annotation_or_info) tuples
+        Each item is ``(field_name, annotation)`` where *annotation* is
+        passed to *type_resolver* for tier-3 fallback.
+    source_label : str
+        Human label for warnings (e.g. "Pydantic field", "dataclass field").
+    type_resolver : callable or None
+        ``(annotation) -> field_name | None``.  If ``None``,
+        ``_type_fallback`` is used for the annotation directly.
+    error_noun : str
+        Noun used in the "No <noun> on ..." error (default ``"fields"``).
+
+    Returns
+    -------
+    dict[str, str]
+        Mapping of model field name → DataForge field name.
+    """
+    import warnings
+    from dataforge.registry import get_field_map
+
+    field_map = get_field_map()
+    mapped: dict[str, str] = {}
+    _aliases = _FIELD_ALIASES
+    _resolve = type_resolver or _type_fallback
+
+    for name, annotation in field_items:
+        # Tier 1: exact name match in registry
+        if name in field_map:
+            mapped[name] = name
+            continue
+        # Tier 2: alias heuristic
+        alias = _aliases.get(name)
+        if alias and alias in field_map:
+            mapped[name] = alias
+            continue
+        # Tier 3: type-based fallback
+        if annotation is not None:
+            type_field = _resolve(annotation)
+            if type_field and type_field in field_map:
+                mapped[name] = type_field
+                continue
+        warnings.warn(
+            f"{source_label} '{name}' on {model_name} "
+            f"could not be mapped to a DataForge field — skipping.",
+            UserWarning,
+            stacklevel=3,
+        )
+
+    if not mapped:
+        raise ValueError(
+            f"No {error_noun} on {model_name} could be mapped to "
+            f"DataForge fields. Ensure the class uses recognisable "
+            f"field names (e.g. 'first_name', 'email', 'city')."
+        )
+
+    return mapped
 
 
 class DataForge:
@@ -841,11 +898,6 @@ class DataForge:
         if not (isinstance(model, type) and issubclass(model, BaseModel)):
             raise TypeError(f"Expected a Pydantic BaseModel subclass, got {model!r}")
 
-        from dataforge.registry import get_field_map
-
-        field_map = get_field_map()
-        mapped: dict[str, str] = {}
-
         # Pydantic v2 uses model_fields; v1 used __fields__
         model_fields: dict[str, Any] = {}
         if hasattr(model, "model_fields"):
@@ -858,42 +910,11 @@ class DataForge:
                 "Ensure it is a valid Pydantic BaseModel."
             )
 
-        import warnings
-
-        for field_name, field_info in model_fields.items():
-            # Tier 1: exact name match in registry
-            if field_name in field_map:
-                mapped[field_name] = field_name
-                continue
-
-            # Tier 2: alias / heuristic name match
-            alias = _pydantic_heuristic(field_name)
-            if alias and alias in field_map:
-                mapped[field_name] = alias
-                continue
-
-            # Tier 3: type-based fallback
-            annotation = getattr(field_info, "annotation", None)
-            if annotation is not None:
-                type_field = _type_fallback(annotation)
-                if type_field and type_field in field_map:
-                    mapped[field_name] = type_field
-                    continue
-
-            warnings.warn(
-                f"Pydantic field '{field_name}' on {model.__name__} "
-                f"could not be mapped to a DataForge field — skipping.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        if not mapped:
-            raise ValueError(
-                f"No fields on {model.__name__} could be mapped to "
-                f"DataForge fields. Ensure the model uses recognisable "
-                f"field names (e.g. 'first_name', 'email', 'city')."
-            )
-
+        field_items = [
+            (name, getattr(info, "annotation", None))
+            for name, info in model_fields.items()
+        ]
+        mapped = _introspect_fields(model.__name__, field_items, "Pydantic field")
         return Schema(self, mapped)
 
     def schema_from_sqlalchemy(self, model: type) -> "Any":
@@ -913,52 +934,19 @@ class DataForge:
                 f"Expected a SQLAlchemy declarative model with __table__, got {model!r}"
             )
 
-        from dataforge.registry import get_field_map
-
-        field_map = get_field_map()
-        mapped: dict[str, str] = {}
-
-        import warnings
-
         table = model.__table__
-        for column in table.columns:
-            col_name = column.name
-            # Skip primary key 'id' columns — not fake-able
-            if col_name == "id" and column.primary_key:
-                continue
-
-            # Tier 1: exact name match in registry
-            if col_name in field_map:
-                mapped[col_name] = col_name
-                continue
-
-            # Tier 2: alias / heuristic name match
-            alias = _sqlalchemy_heuristic(col_name, column)
-            if alias and alias in field_map:
-                mapped[col_name] = alias
-                continue
-
-            # Tier 3: column type fallback
-            type_field = _sqlalchemy_type_fallback(column)
-            if type_field and type_field in field_map:
-                mapped[col_name] = type_field
-                continue
-
-            warnings.warn(
-                f"SQLAlchemy column '{col_name}' on "
-                f"{model.__name__} could not be mapped to a "
-                f"DataForge field — skipping.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        if not mapped:
-            raise ValueError(
-                f"No columns on {model.__name__} could be mapped to "
-                f"DataForge fields. Ensure the model uses recognisable "
-                f"column names (e.g. 'first_name', 'email', 'city')."
-            )
-
+        field_items = [
+            (col.name, col)
+            for col in table.columns
+            if not (col.name == "id" and col.primary_key)
+        ]
+        mapped = _introspect_fields(
+            model.__name__,
+            field_items,
+            "SQLAlchemy column",
+            type_resolver=_sqlalchemy_type_fallback,
+            error_noun="columns",
+        )
         return Schema(self, mapped)
 
     def schema_from_dataclass(self, cls: type) -> "Any":
@@ -981,45 +969,9 @@ class DataForge:
             raise TypeError(f"Expected a dataclass, got {cls!r}")
 
         from dataforge.schema import Schema
-        from dataforge.registry import get_field_map
 
-        field_map = get_field_map()
-        mapped: dict[str, str] = {}
-
-        import warnings
-
-        for dc_field in dataclasses.fields(cls):
-            name = dc_field.name
-            # Tier 1: exact name match in registry
-            if name in field_map:
-                mapped[name] = name
-                continue
-            # Tier 2: alias heuristic
-            alias = _FIELD_ALIASES.get(name)
-            if alias and alias in field_map:
-                mapped[name] = alias
-                continue
-            # Tier 3: type-based fallback
-            annotation = dc_field.type
-            if annotation is not None:
-                type_field = _type_fallback(annotation)
-                if type_field and type_field in field_map:
-                    mapped[name] = type_field
-                    continue
-            warnings.warn(
-                f"Dataclass field '{name}' on {cls.__name__} "
-                f"could not be mapped to a DataForge field — skipping.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        if not mapped:
-            raise ValueError(
-                f"No fields on {cls.__name__} could be mapped to "
-                f"DataForge fields. Ensure the class uses recognisable "
-                f"field names (e.g. 'first_name', 'email', 'city')."
-            )
-
+        field_items = [(f.name, f.type) for f in dataclasses.fields(cls)]
+        mapped = _introspect_fields(cls.__name__, field_items, "Dataclass field")
         return Schema(self, mapped)
 
     def schema_from_typed_dict(self, cls: type) -> "Any":
@@ -1039,40 +991,7 @@ class DataForge:
             raise TypeError(f"Expected a TypedDict class, got {cls!r}")
 
         from dataforge.schema import Schema
-        from dataforge.registry import get_field_map
 
-        field_map = get_field_map()
-        mapped: dict[str, str] = {}
-
-        import warnings
-
-        for name, annotation in annotations.items():
-            # Tier 1: exact name match in registry
-            if name in field_map:
-                mapped[name] = name
-                continue
-            # Tier 2: alias heuristic
-            alias = _FIELD_ALIASES.get(name)
-            if alias and alias in field_map:
-                mapped[name] = alias
-                continue
-            # Tier 3: type-based fallback
-            type_field = _type_fallback(annotation)
-            if type_field and type_field in field_map:
-                mapped[name] = type_field
-                continue
-            warnings.warn(
-                f"TypedDict field '{name}' on {cls.__name__} "
-                f"could not be mapped to a DataForge field — skipping.",
-                UserWarning,
-                stacklevel=2,
-            )
-
-        if not mapped:
-            raise ValueError(
-                f"No fields on {cls.__name__} could be mapped to "
-                f"DataForge fields. Ensure the class uses recognisable "
-                f"field names (e.g. 'first_name', 'email', 'city')."
-            )
-
+        field_items = list(annotations.items())
+        mapped = _introspect_fields(cls.__name__, field_items, "TypedDict field")
         return Schema(self, mapped)

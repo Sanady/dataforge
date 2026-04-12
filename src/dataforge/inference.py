@@ -181,12 +181,8 @@ def _compute_null_rate_and_stats(
 # Backward-compatible shims (used by tests and potentially external code)
 def _compute_null_rate(values: list[Any]) -> float:
     """Compute the null/empty rate of a column."""
-    if not values:
-        return 0.0
-    n_null = sum(
-        1 for v in values if v is None or (isinstance(v, str) and v.strip() == "")
-    )
-    return round(n_null / len(values), 3)
+    null_rate, _ = _compute_null_rate_and_stats(values, "none")
+    return null_rate
 
 
 def _compute_stats(values: list[Any], base_type: str) -> dict[str, Any]:
@@ -198,6 +194,27 @@ def _compute_stats(values: list[Any], base_type: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Distribution fitting — pure stdlib, no scipy
 # ---------------------------------------------------------------------------
+
+
+def _moments_from_sums(
+    n: int, s1: float, s2: float, s3: float, s4: float
+) -> tuple[float, float, float, float]:
+    """Compute (mean, std, skewness, kurtosis) from raw moment sums."""
+    mean = s1 / n
+    var = s2 / n - mean * mean
+    std = _math.sqrt(var) if var > 0 else 0.0
+    if std < 1e-12:
+        return mean, 0.0, 0.0, 0.0
+    m2 = mean * mean
+    m3 = mean * m2
+    m4 = m2 * m2
+    cm3 = s3 / n - 3 * mean * s2 / n + 2 * m3
+    cm4 = s4 / n - 4 * mean * s3 / n + 6 * m2 * s2 / n - 3 * m4
+    std3 = std * std * std
+    std4 = std3 * std
+    skew = cm3 / std3 if std3 > 0 else 0
+    kurtosis = cm4 / std4 - 3.0 if std4 > 0 else 0
+    return mean, std, skew, kurtosis
 
 
 def _fit_distribution(values: list[Any], base_type: str) -> dict[str, Any] | None:
@@ -241,28 +258,11 @@ def _fit_distribution(values: list[Any], base_type: str) -> dict[str, Any] | Non
         elif x > max_val:
             max_val = x
 
-    mean = s1 / n
+    mean, std, skew, kurtosis = _moments_from_sums(n, s1, s2, s3, s4)
     var = s2 / n - mean * mean
-    std = _math.sqrt(var) if var > 0 else 0.0
 
     if std < 1e-12:
         return None
-
-    # Compute skewness and kurtosis from raw moments
-    m2 = mean * mean
-    m3 = mean * m2
-    m4 = m2 * m2
-    # Central moments from raw moments:
-    # cm2 = var (already have)
-    # cm3 = E[x³] - 3·mean·E[x²] + 2·mean³
-    cm3 = s3 / n - 3 * mean * s2 / n + 2 * m3
-    # cm4 = E[x⁴] - 4·mean·E[x³] + 6·mean²·E[x²] - 3·mean⁴
-    cm4 = s4 / n - 4 * mean * s3 / n + 6 * m2 * s2 / n - 3 * m4
-
-    std3 = std * std * std
-    std4 = std3 * std
-    skew = cm3 / std3 if std3 > 0 else 0
-    kurtosis = cm4 / std4 - 3.0 if std4 > 0 else 0
 
     # --- Jarque-Bera ---
     jb = n / 6 * (skew**2 + kurtosis**2 / 4)
@@ -295,21 +295,10 @@ def _fit_distribution(values: list[Any], base_type: str) -> dict[str, Any] | Non
             log_s2 += lx2
             log_s3 += lx2 * lx
             log_s4 += lx2 * lx2
-        log_mean = log_s1 / n
-        log_var = log_s2 / n - log_mean * log_mean
-        log_std = _math.sqrt(log_var) if log_var > 0 else 0.0
+        log_mean, log_std, log_skew, log_kurt = _moments_from_sums(
+            n, log_s1, log_s2, log_s3, log_s4
+        )
         if log_std > 1e-12:
-            lm2 = log_mean * log_mean
-            lm3 = log_mean * lm2
-            lm4 = lm2 * lm2
-            log_cm3 = log_s3 / n - 3 * log_mean * log_s2 / n + 2 * lm3
-            log_cm4 = (
-                log_s4 / n - 4 * log_mean * log_s3 / n + 6 * lm2 * log_s2 / n - 3 * lm4
-            )
-            ls3 = log_std**3
-            ls4 = ls3 * log_std
-            log_skew = log_cm3 / ls3 if ls3 > 0 else 0
-            log_kurt = log_cm4 / ls4 - 3.0 if ls4 > 0 else 0
             log_jb = n / 6 * (log_skew**2 + log_kurt**2 / 4)
             if log_jb < best_score:
                 best_score = log_jb

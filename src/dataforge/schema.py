@@ -14,6 +14,11 @@ if TYPE_CHECKING:
 _ROW_LAMBDA = object()
 
 
+def _default_batch_size(count: int, num_cols: int) -> int:
+    """Compute a sensible batch size based on row count and column count."""
+    return min(count, max(1000, 100_000 // max(num_cols, 1)))
+
+
 @contextmanager
 def _open_file(
     path: str,
@@ -376,7 +381,7 @@ class Schema:
         num_cols = len(columns)
 
         if batch_size is None:
-            batch_size = min(count, max(1000, 100_000 // max(num_cols, 1)))
+            batch_size = _default_batch_size(count, num_cols)
 
         remaining = count
 
@@ -405,7 +410,7 @@ class Schema:
         num_cols = len(columns)
 
         if batch_size is None:
-            batch_size = min(count, max(1000, 100_000 // max(num_cols, 1)))
+            batch_size = _default_batch_size(count, num_cols)
 
         remaining = count
         row_lambdas = self._row_lambdas
@@ -485,7 +490,7 @@ class Schema:
         num_cols = len(columns)
 
         if batch_size is None:
-            batch_size = min(count, max(1000, 100_000 // max(num_cols, 1)))
+            batch_size = _default_batch_size(count, num_cols)
 
         written = 0
         with _open_file(
@@ -561,7 +566,7 @@ class Schema:
         num_cols = len(columns)
 
         if batch_size is None:
-            batch_size = min(count, max(1000, 100_000 // max(num_cols, 1)))
+            batch_size = _default_batch_size(count, num_cols)
 
         _dumps = json.dumps
         written = 0
@@ -682,7 +687,7 @@ class Schema:
         num_cols = len(columns)
 
         if batch_size is None:
-            batch_size = min(count, max(1000, 100_000 // max(num_cols, 1)))
+            batch_size = _default_batch_size(count, num_cols)
 
         schema = pa.schema([(col, pa.string()) for col in columns])
         written = 0
@@ -852,7 +857,7 @@ class Schema:
         num_cols = len(columns)
 
         if batch_size is None:
-            batch_size = min(count, max(1000, 100_000 // max(num_cols, 1)))
+            batch_size = _default_batch_size(count, num_cols)
 
         schema = pa.schema([(col, pa.string()) for col in columns])
 
@@ -890,7 +895,7 @@ class Schema:
         num_cols = len(columns)
 
         if batch_size is None:
-            batch_size = min(count, max(1000, 100_000 // max(num_cols, 1)))
+            batch_size = _default_batch_size(count, num_cols)
 
         if count <= batch_size:
             str_data = self._generate_string_columns(count)

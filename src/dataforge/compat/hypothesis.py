@@ -22,6 +22,18 @@ from __future__ import annotations
 from typing import Any
 
 
+def _import_hypothesis_st() -> Any:
+    """Import and return ``hypothesis.strategies``, raising a clear error if missing."""
+    try:
+        from hypothesis import strategies as st
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "hypothesis is required for DataForge's Hypothesis bridge. "
+            "Install it with: pip install hypothesis"
+        ) from exc
+    return st
+
+
 def strategy(
     field: str,
     locale: str = "en_US",
@@ -41,13 +53,7 @@ def strategy(
     hypothesis.strategies.SearchStrategy
         A strategy that yields values from the specified field.
     """
-    try:
-        from hypothesis import strategies as st
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            "hypothesis is required for strategy(). "
-            "Install it with: pip install hypothesis"
-        ) from exc
+    st = _import_hypothesis_st()
 
     from dataforge.core import DataForge
 
@@ -85,13 +91,7 @@ def forge_strategy(
     hypothesis.strategies.SearchStrategy
         A strategy that yields ``dict[str, Any]`` matching the schema.
     """
-    try:
-        from hypothesis import strategies as st
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            "hypothesis is required for forge_strategy(). "
-            "Install it with: pip install hypothesis"
-        ) from exc
+    st = _import_hypothesis_st()
 
     from dataforge.core import DataForge
 

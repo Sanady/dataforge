@@ -50,17 +50,9 @@ def pipe(field: str, *transforms: Transform) -> dict[str, Any]:
     dict
         A dict spec suitable for use in ``forge.schema({...})``.
     """
-    chain = tuple(transforms)
-
-    def _apply(row: dict[str, Any]) -> Any:
-        val = row.get(f"__pipe_{field}")
-        for fn in chain:
-            val = fn(val)
-        return val
-
     return {
         "field": field,
-        "_pipe_transforms": chain,
+        "_pipe_transforms": tuple(transforms),
     }
 
 
