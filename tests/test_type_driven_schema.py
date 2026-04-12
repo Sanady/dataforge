@@ -40,9 +40,9 @@ class PartialMatch:
 
 @dataclass
 class WithAlias:
-    fname: str  # alias → first_name
-    mail: str  # alias → email
-    phone: str  # alias → phone_number
+    fname: str  # alias -> first_name
+    mail: str  # alias -> email
+    phone: str  # alias -> phone_number
 
 
 @dataclass
@@ -70,17 +70,39 @@ class AliasDictType(TypedDict):
     mail: str
 
 
+# ── Parametrized dataclass happy-path ───────────────────────────────────
+
+_DATACLASS_CASES = [
+    # (cls, count, required_keys, extra_check_column, extra_check)
+    (User, 5, ["first_name", "last_name", "email"], "email", lambda v: "@" in v),
+    (WithAlias, 3, ["fname", "mail", "phone"], None, None),
+    (WithOptional, 3, ["first_name", "email"], None, None),
+]
+
+
 class TestSchemaFromDataclass:
-    def test_basic_dataclass(self) -> None:
+    @pytest.mark.parametrize(
+        "cls, count, required_keys, check_col, check_fn",
+        _DATACLASS_CASES,
+        ids=[c[0].__name__ for c in _DATACLASS_CASES],
+    )
+    def test_dataclass(
+        self,
+        cls: type,
+        count: int,
+        required_keys: list[str],
+        check_col: str | None,
+        check_fn: object | None,
+    ) -> None:
         forge = DataForge(seed=42)
-        schema = forge.schema_from_dataclass(User)
-        rows = schema.generate(5)
-        assert len(rows) == 5
+        schema = forge.schema_from_dataclass(cls)
+        rows = schema.generate(count)
+        assert len(rows) == count
         for row in rows:
-            assert "first_name" in row
-            assert "last_name" in row
-            assert "email" in row
-            assert "@" in row["email"]
+            for key in required_keys:
+                assert key in row
+            if check_col and check_fn:
+                assert check_fn(row[check_col])  # type: ignore[operator]
 
     def test_bool_type_fallback(self) -> None:
         forge = DataForge(seed=42)
@@ -103,20 +125,10 @@ class TestSchemaFromDataclass:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             schema = forge.schema_from_dataclass(PartialMatch)
-        # Should have at least one warning for the unmapped field
         unmapped_warnings = [x for x in w if "could not be mapped" in str(x.message)]
         assert len(unmapped_warnings) >= 1
         rows = schema.generate(3)
         assert all("first_name" in row for row in rows)
-
-    def test_alias_fields(self) -> None:
-        forge = DataForge(seed=42)
-        schema = forge.schema_from_dataclass(WithAlias)
-        rows = schema.generate(3)
-        for row in rows:
-            assert "fname" in row
-            assert "mail" in row
-            assert "phone" in row
 
     def test_not_a_dataclass_raises(self) -> None:
         forge = DataForge()
@@ -124,16 +136,28 @@ class TestSchemaFromDataclass:
             forge.schema_from_dataclass(str)  # type: ignore[arg-type]
 
 
+# ── Parametrized TypedDict cases ────────────────────────────────────────
+
+_TYPEDDICT_CASES = [
+    (UserDict, 5, ["first_name", "email", "city"]),
+    (AliasDictType, 3, ["fname", "mail"]),
+]
+
+
 class TestSchemaFromTypedDict:
-    def test_basic_typed_dict(self) -> None:
+    @pytest.mark.parametrize(
+        "cls, count, required_keys",
+        _TYPEDDICT_CASES,
+        ids=[c[0].__name__ for c in _TYPEDDICT_CASES],
+    )
+    def test_typed_dict(self, cls: type, count: int, required_keys: list[str]) -> None:
         forge = DataForge(seed=42)
-        schema = forge.schema_from_typed_dict(UserDict)
-        rows = schema.generate(5)
-        assert len(rows) == 5
+        schema = forge.schema_from_typed_dict(cls)
+        rows = schema.generate(count)
+        assert len(rows) == count
         for row in rows:
-            assert "first_name" in row
-            assert "email" in row
-            assert "city" in row
+            for key in required_keys:
+                assert key in row
 
     def test_unmappable_typed_dict_raises(self) -> None:
         forge = DataForge(seed=42)
@@ -141,14 +165,6 @@ class TestSchemaFromTypedDict:
             with warnings.catch_warnings(record=True):
                 warnings.simplefilter("always")
                 forge.schema_from_typed_dict(UnmappableDict)
-
-    def test_alias_typed_dict(self) -> None:
-        forge = DataForge(seed=42)
-        schema = forge.schema_from_typed_dict(AliasDictType)
-        rows = schema.generate(3)
-        for row in rows:
-            assert "fname" in row
-            assert "mail" in row
 
     def test_no_annotations_raises(self) -> None:
         forge = DataForge()

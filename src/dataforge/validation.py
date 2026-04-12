@@ -168,23 +168,39 @@ def validate_records(
     violations: list[Violation] = []
     nullable = null_fields or {}
 
+    # Pre-resolve per-column info once, outside the row loop.
+    # Each entry: (col_name, field_name, base_field, pattern_or_None, is_non_empty)
+    _col_info: list[tuple[str, str, str, _re.Pattern[str] | None, bool]] = []
+    for col_name, field_name in field_map.items():
+        base_field = field_name.split(".")[-1] if "." in field_name else field_name
+        pattern = _VALIDATORS.get(base_field)
+        is_non_empty = field_name in _NON_EMPTY_FIELDS and col_name not in nullable
+        _col_info.append((col_name, field_name, base_field, pattern, is_non_empty))
+
+    _Violation = Violation
+    _append = violations.append
+    _isinstance = isinstance
+    _str = str
+
     for row_idx, row in enumerate(records):
-        for col_name, field_name in field_map.items():
+        for col_name, field_name, base_field, pattern, is_non_empty in _col_info:
             value = row.get(col_name)
 
             # Check for missing column
             if col_name not in row:
-                violations.append(
-                    Violation(row_idx, col_name, field_name, None, "missing column")
+                _append(
+                    _Violation(row_idx, col_name, field_name, None, "missing column")
                 )
                 continue
 
             # Check null
-            is_null = value is None or (isinstance(value, str) and value.strip() == "")
+            is_null = value is None or (
+                _isinstance(value, _str) and value.strip() == ""
+            )
             if is_null:
-                if col_name not in nullable and field_name in _NON_EMPTY_FIELDS:
-                    violations.append(
-                        Violation(
+                if is_non_empty:
+                    _append(
+                        _Violation(
                             row_idx,
                             col_name,
                             field_name,
@@ -195,12 +211,10 @@ def validate_records(
                 continue
 
             # Semantic pattern validation
-            base_field = field_name.split(".")[-1] if "." in field_name else field_name
-            pattern = _VALIDATORS.get(base_field)
             if pattern is not None:
-                if not pattern.match(str(value)):
-                    violations.append(
-                        Violation(
+                if not pattern.match(_str(value)):
+                    _append(
+                        _Violation(
                             row_idx,
                             col_name,
                             field_name,

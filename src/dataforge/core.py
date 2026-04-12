@@ -592,8 +592,9 @@ class DataForge:
         from dataforge.registry import get_field_map
 
         fm = get_field_map()
-        if field in fm:
-            return fm[field]
+        result = fm.get(field)
+        if result is not None:
+            return result
         raise ValueError(
             f"Unknown field '{field}'. Use dotted notation "
             f"(e.g. 'person.first_name') or a known shorthand."

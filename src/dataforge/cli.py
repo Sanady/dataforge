@@ -213,6 +213,9 @@ def _run_serve(args: argparse.Namespace) -> int:
 
     count_default = args.count
 
+    # Pre-build the schema once, not per request
+    _cached_schema = forge.schema(schema_fields, null_fields=null_fields)
+
     class MockHandler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
             # Parse count from query string: /data?count=50
@@ -227,8 +230,7 @@ def _run_serve(args: argparse.Namespace) -> int:
                         except ValueError:
                             pass
 
-            schema = forge.schema(schema_fields, null_fields=null_fields)
-            rows = schema.generate(count=count)
+            rows = _cached_schema.generate(count=count)
             body = json.dumps(rows, indent=2, ensure_ascii=False, default=str)
 
             self.send_response(200)

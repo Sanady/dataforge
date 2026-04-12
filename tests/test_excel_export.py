@@ -10,89 +10,94 @@ openpyxl = pytest.importorskip("openpyxl")
 from dataforge import DataForge
 
 
+# ── Parametrized export scenarios ───────────────────────────────────────
+
+_EXPORT_CASES = [
+    # (fields, count, sheet_name, expected_header, check_col_idx, check_fn)
+    (
+        ["first_name", "email"],
+        10,
+        None,
+        ("first_name", "email"),
+        1,
+        lambda v: "@" in str(v),
+    ),
+    (["city"], 5, "Cities", None, None, None),
+    (["first_name"], 25, None, None, None, None),
+]
+
+
 class TestSchemaToExcel:
-    def test_basic_export(self) -> None:
+    @pytest.mark.parametrize(
+        "fields, count, sheet_name, expected_header, check_col_idx, check_fn",
+        _EXPORT_CASES,
+        ids=["basic_export", "custom_sheet", "returns_count"],
+    )
+    def test_export(
+        self,
+        fields: list[str],
+        count: int,
+        sheet_name: str | None,
+        expected_header: tuple | None,
+        check_col_idx: int | None,
+        check_fn: object | None,
+    ) -> None:
         forge = DataForge(seed=42)
-        schema = forge.schema(["first_name", "email"])
+        schema = forge.schema(fields)
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
             path = f.name
 
         try:
-            written = schema.to_excel(path, count=10)
-            assert written == 10
+            kwargs = {"count": count}
+            if sheet_name:
+                kwargs["sheet_name"] = sheet_name
+            written = schema.to_excel(path, **kwargs)
+            assert written == count
             assert os.path.exists(path)
 
             wb = openpyxl.load_workbook(path)
+            if sheet_name:
+                assert sheet_name in wb.sheetnames
             ws = wb.active
-            # Header + 10 rows
             rows = list(ws.iter_rows(values_only=True))
-            assert rows[0] == ("first_name", "email")
-            assert len(rows) == 11  # header + 10 data rows
-            # Check emails contain @
-            for row in rows[1:]:
-                assert "@" in str(row[1])
-        finally:
-            os.unlink(path)
-
-    def test_custom_sheet_name(self) -> None:
-        forge = DataForge(seed=42)
-        schema = forge.schema(["city"])
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
-            path = f.name
-
-        try:
-            schema.to_excel(path, count=5, sheet_name="Cities")
-            wb = openpyxl.load_workbook(path)
-            assert "Cities" in wb.sheetnames
-        finally:
-            os.unlink(path)
-
-    def test_returns_count(self) -> None:
-        forge = DataForge(seed=42)
-        schema = forge.schema(["first_name"])
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
-            path = f.name
-
-        try:
-            result = schema.to_excel(path, count=25)
-            assert result == 25
+            if expected_header:
+                assert rows[0] == expected_header
+                assert len(rows) == count + 1  # header + data
+            if check_col_idx is not None and check_fn is not None:
+                for row in rows[1:]:
+                    assert check_fn(row[check_col_idx])  # type: ignore[operator]
         finally:
             os.unlink(path)
 
 
 class TestForgeToExcel:
-    def test_convenience_method(self) -> None:
+    @pytest.mark.parametrize(
+        "fields, count, expected_header",
+        [
+            (["first_name", "email"], 5, None),
+            ({"Name": "full_name", "Email": "email"}, 3, ("Name", "Email")),
+        ],
+        ids=["list_fields", "dict_fields"],
+    )
+    def test_convenience_method(
+        self,
+        fields: list[str] | dict[str, str],
+        count: int,
+        expected_header: tuple | None,
+    ) -> None:
         forge = DataForge(seed=42)
         with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
             path = f.name
 
         try:
-            written = forge.to_excel(
-                ["first_name", "email"],
-                path=path,
-                count=5,
-            )
-            assert written == 5
+            written = forge.to_excel(fields, path=path, count=count)
+            assert written == count
             assert os.path.exists(path)
-        finally:
-            os.unlink(path)
 
-    def test_dict_fields(self) -> None:
-        forge = DataForge(seed=42)
-        with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False) as f:
-            path = f.name
-
-        try:
-            written = forge.to_excel(
-                {"Name": "full_name", "Email": "email"},
-                path=path,
-                count=3,
-            )
-            assert written == 3
-
-            wb = openpyxl.load_workbook(path)
-            ws = wb.active
-            rows = list(ws.iter_rows(values_only=True))
-            assert rows[0] == ("Name", "Email")
+            if expected_header:
+                wb = openpyxl.load_workbook(path)
+                ws = wb.active
+                rows = list(ws.iter_rows(values_only=True))
+                assert rows[0] == expected_header
         finally:
             os.unlink(path)

@@ -9,6 +9,17 @@ from hypothesis import given, settings
 from dataforge.compat.hypothesis import forge_strategy, strategy
 
 
+# ── Parametrized single-field strategies ────────────────────────────────
+
+_STRATEGY_CASES = [
+    # (field, expected_type, extra_check_or_None)
+    ("email", str, lambda v: "@" in v),
+    ("first_name", str, lambda v: len(v) > 0),
+    ("city", str, None),
+    ("ipv4", str, lambda v: len(v.split(".")) == 4),
+]
+
+
 class TestStrategy:
     @given(email=strategy("email"))
     @settings(max_examples=10)

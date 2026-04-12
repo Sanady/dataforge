@@ -1,7 +1,8 @@
 """Tests for Feature 10: Statistical Distribution Fitting."""
 
-import math
 import random
+
+import pytest
 
 from dataforge import DataForge
 from dataforge.inference import (
@@ -11,52 +12,93 @@ from dataforge.inference import (
 )
 
 
+# ── Parametrized distribution detection ─────────────────────────────────
+
+
+def _normal_data(rng: random.Random) -> list[float]:
+    return [rng.gauss(100, 15) for _ in range(500)]
+
+
+def _exponential_data(rng: random.Random) -> list[float]:
+    return [rng.expovariate(0.5) for _ in range(500)]
+
+
+def _beta_data(rng: random.Random) -> list[float]:
+    return [rng.betavariate(2, 5) for _ in range(500)]
+
+
+def _zipf_data(rng: random.Random) -> list[int]:
+    values = []
+    for _ in range(500):
+        u = rng.random()
+        val = int(1.0 / (u**0.5))
+        values.append(max(1, val))
+    return values
+
+
+_DIST_CASES = [
+    # (generator_fn, dtype, expected_names)
+    (_normal_data, "float", {"normal", "lognormal"}),
+    (_exponential_data, "float", {"exponential", "lognormal"}),
+    (_beta_data, "float", {"beta", "normal", "lognormal"}),
+    (_zipf_data, "int", {"zipf", "exponential", "lognormal", "normal"}),
+]
+
+
 class TestFitDistribution:
-    def test_returns_none_for_string_type(self) -> None:
-        assert _fit_distribution(["a", "b", "c"], "str") is None
+    @pytest.mark.parametrize(
+        "gen_fn, dtype, expected_names",
+        _DIST_CASES,
+        ids=["normal", "exponential", "beta", "zipf"],
+    )
+    def test_distribution_detection(
+        self,
+        gen_fn: object,
+        dtype: str,
+        expected_names: set[str],
+    ) -> None:
+        rng = random.Random(42)
+        values = gen_fn(rng)  # type: ignore[operator]
+        result = _fit_distribution(values, dtype)
+        assert result is not None
+        assert result["name"] in expected_names
 
-    def test_returns_none_for_too_few_values(self) -> None:
-        assert _fit_distribution([1, 2, 3], "int") is None
-
-    def test_normal_detection(self) -> None:
+    def test_normal_params_reasonable(self) -> None:
         rng = random.Random(42)
         values = [rng.gauss(100, 15) for _ in range(500)]
         result = _fit_distribution(values, "float")
         assert result is not None
-        assert result["name"] in ("normal", "lognormal")
-        # If normal, check params
         if result["name"] == "normal":
             assert abs(result["params"]["mean"] - 100) < 5
             assert abs(result["params"]["std"] - 15) < 5
 
-    def test_exponential_detection(self) -> None:
-        rng = random.Random(42)
-        values = [rng.expovariate(0.5) for _ in range(500)]
-        result = _fit_distribution(values, "float")
-        assert result is not None
-        # Exponential data should be detected as exponential or lognormal
-        assert result["name"] in ("exponential", "lognormal")
-
-    def test_beta_detection(self) -> None:
-        rng = random.Random(42)
-        values = [rng.betavariate(2, 5) for _ in range(500)]
-        result = _fit_distribution(values, "float")
-        assert result is not None
-        # Beta values are in (0,1) range
-        assert result["name"] in ("beta", "normal", "lognormal")
+    @pytest.mark.parametrize(
+        "values, dtype",
+        [
+            (["a", "b", "c"], "str"),
+            ([1, 2, 3], "int"),
+            ([5.0] * 100, "float"),
+        ],
+        ids=["string_type", "too_few", "constant"],
+    )
+    def test_returns_none(self, values: list, dtype: str) -> None:
+        assert _fit_distribution(values, dtype) is None
 
     def test_none_values_skipped(self) -> None:
         rng = random.Random(42)
-        values = [rng.gauss(50, 10) for _ in range(100)]
+        values: list = [rng.gauss(50, 10) for _ in range(100)]
         values += [None] * 20
         result = _fit_distribution(values, "float")
-        # Should still work, ignoring None values
         assert result is not None
 
-    def test_constant_values_returns_none(self) -> None:
-        values = [5.0] * 100
-        result = _fit_distribution(values, "float")
-        assert result is None  # std = 0, no distribution
+
+# ── ColumnAnalysis ──────────────────────────────────────────────────────
+
+_CA_REPR_CASES = [
+    # (distribution, check_contains, check_not_contains)
+    (None, "col", "dist="),
+    ({"name": "normal", "params": {"mean": 0, "std": 1}}, "dist=normal", None),
+]
 
 
 class TestColumnAnalysis:
@@ -65,17 +107,25 @@ class TestColumnAnalysis:
         assert ca.name == "col"
         assert ca.distribution is None
 
-    def test_repr_without_distribution(self) -> None:
-        ca = ColumnAnalysis("col", "str", None, 0.0, {}, None)
+    @pytest.mark.parametrize(
+        "distribution, check_in, check_not_in",
+        _CA_REPR_CASES,
+        ids=["no_dist", "with_dist"],
+    )
+    def test_repr(
+        self,
+        distribution: dict | None,
+        check_in: str,
+        check_not_in: str | None,
+    ) -> None:
+        kwargs = {"distribution": distribution} if distribution else {}
+        ca = ColumnAnalysis(
+            "col", "float" if distribution else "str", None, 0.0, {}, None, **kwargs
+        )
         r = repr(ca)
-        assert "col" in r
-        assert "dist=" not in r
-
-    def test_repr_with_distribution(self) -> None:
-        dist = {"name": "normal", "params": {"mean": 0, "std": 1}}
-        ca = ColumnAnalysis("col", "float", None, 0.0, {}, None, distribution=dist)
-        r = repr(ca)
-        assert "dist=normal" in r
+        assert check_in in r
+        if check_not_in:
+            assert check_not_in not in r
 
 
 class TestSchemaInferrerDistribution:
@@ -121,20 +171,3 @@ class TestSchemaInferrerDistribution:
         inferrer.from_records(records)
         desc = inferrer.describe()
         assert "distribution:" in desc
-
-
-class TestZipfDetection:
-    def test_zipf_integer_data(self) -> None:
-        """Zipf-distributed integer data should be detected."""
-        rng = random.Random(42)
-        # Generate Zipf-like data: many 1s, fewer 2s, even fewer 3s...
-        values = []
-        for _ in range(500):
-            # Simple Zipf approximation
-            u = rng.random()
-            val = int(1.0 / (u**0.5))  # roughly Zipf with s≈2
-            values.append(max(1, val))
-
-        result = _fit_distribution(values, "int")
-        # Should detect some distribution (might be zipf, exponential, etc.)
-        assert result is not None

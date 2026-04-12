@@ -57,88 +57,46 @@ class TestFakerSeeding:
         fake.seed_locale("en_US", 42)
 
 
+# ── Parametrized method resolution ──────────────────────────────────────
+
+
+_METHOD_CASES: list[tuple[str, type, object | None]] = [
+    # (method_name, expected_type, extra_assertion_or_None)
+    ("name", str, None),
+    ("email", str, lambda r: "@" in r),
+    ("address", str, None),
+    ("city", str, None),
+    ("company", str, None),
+    ("job", str, None),
+    ("phone_number", str, None),
+    ("ssn", str, None),
+    ("sentence", str, None),
+    ("url", str, lambda r: r.startswith("http")),
+    ("uuid4", str, lambda r: len(r) == 36),
+    ("boolean", bool, None),
+    ("ipv4", str, lambda r: len(r.split(".")) == 4),
+    ("date", str, None),
+    ("credit_card_number", str, None),
+]
+
+
 class TestFakerMethodResolution:
-    def test_name(self) -> None:
+    @pytest.mark.parametrize(
+        "method, expected_type, check",
+        _METHOD_CASES,
+        ids=[c[0] for c in _METHOD_CASES],
+    )
+    def test_method_returns_correct_type(
+        self,
+        method: str,
+        expected_type: type,
+        check: object | None,
+    ) -> None:
         fake = Faker(seed=1)
-        result = fake.name()
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_email(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.email()
-        assert isinstance(result, str)
-        assert "@" in result
-
-    def test_address(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.address()
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_city(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.city()
-        assert isinstance(result, str)
-
-    def test_company(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.company()
-        assert isinstance(result, str)
-
-    def test_job(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.job()
-        assert isinstance(result, str)
-
-    def test_phone_number(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.phone_number()
-        assert isinstance(result, str)
-
-    def test_ssn(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.ssn()
-        assert isinstance(result, str)
-
-    def test_sentence(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.sentence()
-        assert isinstance(result, str)
-
-    def test_url(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.url()
-        assert isinstance(result, str)
-        assert result.startswith("http")
-
-    def test_uuid4(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.uuid4()
-        assert isinstance(result, str)
-        assert len(result) == 36  # UUID format
-
-    def test_boolean(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.boolean()
-        assert isinstance(result, bool)
-
-    def test_ipv4(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.ipv4()
-        assert isinstance(result, str)
-        parts = result.split(".")
-        assert len(parts) == 4
-
-    def test_date(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.date()
-        assert isinstance(result, str)
-
-    def test_credit_card_number(self) -> None:
-        fake = Faker(seed=1)
-        result = fake.credit_card_number()
-        assert isinstance(result, str)
+        result = getattr(fake, method)()
+        assert isinstance(result, expected_type)
+        if check is not None:
+            assert check(result)  # type: ignore[operator]
 
 
 class TestFakerMethodCache:

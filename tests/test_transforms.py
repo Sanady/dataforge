@@ -2,6 +2,8 @@
 
 import base64
 
+import pytest
+
 from dataforge import DataForge
 from dataforge.transforms import (
     apply_if,
@@ -72,91 +74,133 @@ class TestPipeFunction:
             assert "@" in row["email"]
 
 
+# ── Parametrized case / string transforms ───────────────────────────────
+
+_UPPER_LOWER_CASES = [
+    (upper, "hello", "HELLO"),
+    (upper, 123, "123"),
+    (lower, "HELLO", "hello"),
+    (lower, 123, "123"),
+]
+
+_CASE_TRANSFORMS = [
+    (snake_case, "Hello World", "hello_world"),
+    (snake_case, "helloWorld", "hello_world"),
+    (snake_case, "HelloWorld", "hello_world"),
+    (camel_case, "hello world", "helloWorld"),
+    (camel_case, "hello_world", "helloWorld"),
+    (kebab_case, "Hello World", "hello-world"),
+    (title_case, "hello world", "Hello World"),
+]
+
+_STRING_TRANSFORMS = [
+    ("prefix", prefix("Mr. "), "Smith", "Mr. Smith"),
+    ("suffix", suffix(" Jr."), "Smith", "Smith Jr."),
+    ("wrap", wrap("[", "]"), "hello", "[hello]"),
+    ("replace", replace("old", "new"), "old value old", "new value new"),
+    ("strip", strip, "  hello  ", "hello"),
+]
+
+
 class TestUpperLower:
-    def test_upper(self) -> None:
-        assert upper("hello") == "HELLO"
-
-    def test_upper_non_string(self) -> None:
-        assert upper(123) == "123"
-
-    def test_lower(self) -> None:
-        assert lower("HELLO") == "hello"
-
-    def test_lower_non_string(self) -> None:
-        assert lower(123) == "123"
+    @pytest.mark.parametrize(
+        "fn, inp, expected",
+        _UPPER_LOWER_CASES,
+        ids=["upper_str", "upper_int", "lower_str", "lower_int"],
+    )
+    def test_upper_lower(self, fn: object, inp: object, expected: str) -> None:
+        assert fn(inp) == expected  # type: ignore[operator]
 
 
 class TestCaseTransforms:
-    def test_snake_case_from_spaces(self) -> None:
-        assert snake_case("Hello World") == "hello_world"
-
-    def test_snake_case_from_camel(self) -> None:
-        assert snake_case("helloWorld") == "hello_world"
-
-    def test_snake_case_from_pascal(self) -> None:
-        assert snake_case("HelloWorld") == "hello_world"
-
-    def test_camel_case(self) -> None:
-        assert camel_case("hello world") == "helloWorld"
-
-    def test_camel_case_from_snake(self) -> None:
-        assert camel_case("hello_world") == "helloWorld"
-
-    def test_kebab_case(self) -> None:
-        assert kebab_case("Hello World") == "hello-world"
-
-    def test_title_case(self) -> None:
-        assert title_case("hello world") == "Hello World"
+    @pytest.mark.parametrize(
+        "fn, inp, expected",
+        _CASE_TRANSFORMS,
+        ids=[
+            "snake_spaces",
+            "snake_camel",
+            "snake_pascal",
+            "camel_spaces",
+            "camel_snake",
+            "kebab",
+            "title",
+        ],
+    )
+    def test_case_transform(self, fn: object, inp: str, expected: str) -> None:
+        assert fn(inp) == expected  # type: ignore[operator]
 
 
 class TestTruncate:
-    def test_truncate_short_string(self) -> None:
-        fn = truncate(50)
-        assert fn("hello") == "hello"
-
-    def test_truncate_long_string(self) -> None:
-        fn = truncate(10)
-        result = fn("this is a long string")
-        assert len(result) <= 10
-        assert result.endswith("...")
-
-    def test_truncate_custom_suffix(self) -> None:
-        fn = truncate(10, suffix="~")
-        result = fn("this is a long string")
-        assert result.endswith("~")
-        assert len(result) <= 10
+    @pytest.mark.parametrize(
+        "max_len, sfx, inp, check_endswith, check_maxlen",
+        [
+            (50, "...", "hello", None, None),  # short string, no truncation
+            (10, "...", "this is a long string", "...", 10),
+            (10, "~", "this is a long string", "~", 10),
+        ],
+        ids=["no_truncation", "default_suffix", "custom_suffix"],
+    )
+    def test_truncate(
+        self,
+        max_len: int,
+        sfx: str,
+        inp: str,
+        check_endswith: str | None,
+        check_maxlen: int | None,
+    ) -> None:
+        fn = truncate(max_len) if sfx == "..." else truncate(max_len, suffix=sfx)
+        result = fn(inp)
+        if check_endswith:
+            assert result.endswith(check_endswith)
+        if check_maxlen:
+            assert len(result) <= check_maxlen
+        if check_endswith is None:
+            assert result == inp  # no truncation
 
 
 class TestMaybeNull:
-    def test_maybe_null_zero_probability(self) -> None:
-        fn = maybe_null(0.0)
-        for _ in range(100):
-            assert fn("value") == "value"
-
-    def test_maybe_null_full_probability(self) -> None:
-        fn = maybe_null(1.0)
-        for _ in range(100):
-            assert fn("value") is None
+    @pytest.mark.parametrize(
+        "probability, expect_all_value, expect_all_none",
+        [
+            (0.0, True, False),
+            (1.0, False, True),
+        ],
+        ids=["zero", "full"],
+    )
+    def test_maybe_null_deterministic(
+        self, probability: float, expect_all_value: bool, expect_all_none: bool
+    ) -> None:
+        fn = maybe_null(probability)
+        results = [fn("value") for _ in range(100)]
+        if expect_all_value:
+            assert all(r == "value" for r in results)
+        if expect_all_none:
+            assert all(r is None for r in results)
 
     def test_maybe_null_partial(self) -> None:
         fn = maybe_null(0.5)
         results = [fn("value") for _ in range(200)]
         null_count = results.count(None)
-        # With 0.5, expect roughly 100 nulls. Allow wide margin.
         assert 30 < null_count < 170
 
 
+# ── Parametrized hash / redact / b64 ───────────────────────────────────
+
+_HASH_CASES = [
+    ("sha256", 64),
+    ("md5", 32),
+]
+
+
 class TestHash:
-    def test_hash_sha256(self) -> None:
-        fn = hash_with("sha256")
+    @pytest.mark.parametrize(
+        "algo, expected_len", _HASH_CASES, ids=[c[0] for c in _HASH_CASES]
+    )
+    def test_hash(self, algo: str, expected_len: int) -> None:
+        fn = hash_with(algo)
         result = fn("hello")
         assert isinstance(result, str)
-        assert len(result) == 64  # SHA-256 hex digest
-
-    def test_hash_md5(self) -> None:
-        fn = hash_with("md5")
-        result = fn("hello")
-        assert len(result) == 32  # MD5 hex digest
+        assert len(result) == expected_len
 
     def test_hash_deterministic(self) -> None:
         fn = hash_with("sha256")
@@ -171,67 +215,56 @@ class TestBase64:
 
     def test_decode_b64(self) -> None:
         encoded = base64.b64encode(b"hello").decode()
-        result = decode_b64(encoded)
-        assert result == "hello"
+        assert decode_b64(encoded) == "hello"
 
     def test_roundtrip(self) -> None:
         original = "test string 123"
         assert decode_b64(encode_b64(original)) == original
 
 
+_REDACT_CASES = [
+    # (kwargs, input, expected)
+    ({}, "hello", "*****"),
+    ({"keep_start": 2}, "hello", "he***"),
+    ({"keep_end": 2}, "hello", "***lo"),
+    ({"keep_start": 1, "keep_end": 1}, "hello", "h***o"),
+    ({"char": "X"}, "hello", "XXXXX"),
+]
+
+
 class TestRedact:
-    def test_redact_full(self) -> None:
-        fn = redact()
-        result = fn("hello")
-        assert result == "*****"
-
-    def test_redact_keep_start(self) -> None:
-        fn = redact(keep_start=2)
-        result = fn("hello")
-        assert result == "he***"
-
-    def test_redact_keep_end(self) -> None:
-        fn = redact(keep_end=2)
-        result = fn("hello")
-        assert result == "***lo"
-
-    def test_redact_keep_both(self) -> None:
-        fn = redact(keep_start=1, keep_end=1)
-        result = fn("hello")
-        assert result == "h***o"
-
-    def test_redact_custom_char(self) -> None:
-        fn = redact(char="X")
-        result = fn("hello")
-        assert result == "XXXXX"
+    @pytest.mark.parametrize(
+        "kwargs, inp, expected",
+        _REDACT_CASES,
+        ids=["full", "keep_start", "keep_end", "keep_both", "custom_char"],
+    )
+    def test_redact(self, kwargs: dict, inp: str, expected: str) -> None:
+        fn = redact(**kwargs)
+        assert fn(inp) == expected
 
 
 class TestApplyIf:
-    def test_apply_when_true(self) -> None:
-        fn = apply_if(lambda x: len(str(x)) > 3, upper)
-        assert fn("hello") == "HELLO"
-
-    def test_skip_when_false(self) -> None:
-        fn = apply_if(lambda x: len(str(x)) > 10, upper)
-        assert fn("hello") == "hello"
+    @pytest.mark.parametrize(
+        "predicate, inp, expected",
+        [
+            (lambda x: len(str(x)) > 3, "hello", "HELLO"),
+            (lambda x: len(str(x)) > 10, "hello", "hello"),
+        ],
+        ids=["apply", "skip"],
+    )
+    def test_apply_if(self, predicate: object, inp: str, expected: str) -> None:
+        fn = apply_if(predicate, upper)  # type: ignore[arg-type]
+        assert fn(inp) == expected
 
 
 class TestStringTransforms:
-    def test_prefix(self) -> None:
-        fn = prefix("Mr. ")
-        assert fn("Smith") == "Mr. Smith"
-
-    def test_suffix(self) -> None:
-        fn = suffix(" Jr.")
-        assert fn("Smith") == "Smith Jr."
-
-    def test_wrap(self) -> None:
-        fn = wrap("[", "]")
-        assert fn("hello") == "[hello]"
-
-    def test_replace(self) -> None:
-        fn = replace("old", "new")
-        assert fn("old value old") == "new value new"
-
-    def test_strip(self) -> None:
-        assert strip("  hello  ") == "hello"
+    @pytest.mark.parametrize(
+        "name, fn, inp, expected",
+        _STRING_TRANSFORMS,
+        ids=[c[0] for c in _STRING_TRANSFORMS],
+    )
+    def test_string_transform(
+        self, name: str, fn: object, inp: str, expected: str
+    ) -> None:
+        result = fn(inp) if callable(fn) else fn  # type: ignore[operator]
+        assert result == expected

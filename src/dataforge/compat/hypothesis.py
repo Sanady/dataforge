@@ -50,14 +50,19 @@ def strategy(
         ) from exc
 
     from dataforge.core import DataForge
+    from dataforge.backend import RandomEngine
+
+    # Resolve the field callable once at strategy creation time
+    # so we only pay the lookup cost once, not per draw.
+    probe_forge = DataForge(locale=locale, seed=0)
+    prov_attr, method_name = probe_forge._resolve_field(field)
 
     @st.composite
     def _field_strategy(draw: Any) -> Any:
         seed = draw(st.integers(min_value=0, max_value=2**31 - 1))
         forge = DataForge(locale=locale, seed=seed)
-        prov_attr, method = forge._resolve_field(field)
         provider = getattr(forge, prov_attr)
-        fn = getattr(provider, method)
+        fn = getattr(provider, method_name)
         return fn(**kwargs)
 
     return _field_strategy()

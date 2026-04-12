@@ -29,7 +29,7 @@ coverage.xml
 .dmypy.json
 
 # Benchmark / profiling output
-*benchmark*.json
+benchmarks/
 *.prof
 *.pstats
 

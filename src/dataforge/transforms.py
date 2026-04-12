@@ -19,11 +19,20 @@ from __future__ import annotations
 
 import base64 as _b64
 import hashlib as _hashlib
+import random as _rng
 import re as _re
 from typing import Any, Callable
 
 # Type alias for a transform function: str → str (or Any → Any)
 Transform = Callable[[Any], Any]
+
+# Pre-compiled regex patterns for snake_case (avoids re-compiling per call)
+_SNAKE_RE1 = _re.compile(r"([A-Z]+)([A-Z][a-z])")
+_SNAKE_RE2 = _re.compile(r"([a-z0-9])([A-Z])")
+_SNAKE_RE3 = _re.compile(r"[\s\-]+")
+
+# Pre-compiled regex pattern for camel_case
+_CAMEL_SPLIT = _re.compile(r"[\s_\-]+")
 
 
 def pipe(field: str, *transforms: Transform) -> dict[str, Any]:
@@ -73,16 +82,16 @@ def lower(value: Any) -> str:
 def snake_case(value: Any) -> str:
     """Convert to snake_case (e.g. ``"Hello World"`` → ``"hello_world"``)."""
     s = str(value).strip()
-    s = _re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", s)
-    s = _re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s)
-    s = _re.sub(r"[\s\-]+", "_", s)
+    s = _SNAKE_RE1.sub(r"\1_\2", s)
+    s = _SNAKE_RE2.sub(r"\1_\2", s)
+    s = _SNAKE_RE3.sub("_", s)
     return s.lower()
 
 
 def camel_case(value: Any) -> str:
     """Convert to camelCase (e.g. ``"hello world"`` → ``"helloWorld"``)."""
     s = str(value).strip()
-    parts = _re.split(r"[\s_\-]+", s)
+    parts = _CAMEL_SPLIT.split(s)
     if not parts:
         return ""
     return parts[0].lower() + "".join(p.capitalize() for p in parts[1:])
@@ -127,10 +136,10 @@ def maybe_null(probability: float = 0.1) -> Transform:
     probability : float
         Chance of returning ``None`` (0.0–1.0).
     """
-    import random as _rng
+    _random = _rng.random
 
     def _null(value: Any) -> Any:
-        return None if _rng.random() < probability else value
+        return None if _random() < probability else value
 
     return _null
 
@@ -143,9 +152,10 @@ def hash_with(algorithm: str = "sha256") -> Transform:
     algorithm : str
         Hash algorithm name (e.g. ``"sha256"``, ``"md5"``).
     """
+    _proto = _hashlib.new(algorithm)
 
     def _hash(value: Any) -> str:
-        h = _hashlib.new(algorithm)
+        h = _proto.copy()
         h.update(str(value).encode())
         return h.hexdigest()
 

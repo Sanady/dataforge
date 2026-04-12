@@ -1,6 +1,5 @@
 """Tests for Feature 8: HTTP Mock Data Server."""
 
-import argparse
 import json
 import threading
 import time
@@ -11,27 +10,27 @@ import pytest
 from dataforge.cli import _run_serve, _build_parser
 
 
+# ── Parametrized CLI argument parsing ───────────────────────────────────
+
+_CLI_CASES = [
+    # (args, attr, expected)
+    (["--serve"], "serve", True),
+    (["--serve"], "port", 8080),
+    (["--serve", "--port", "9090"], "port", 9090),
+    (["--serve", "first_name", "email"], "fields", ["first_name", "email"]),
+]
+
+
 class TestServeCLIArgs:
-    def test_serve_flag_parsed(self) -> None:
+    @pytest.mark.parametrize(
+        "args, attr, expected",
+        _CLI_CASES,
+        ids=["serve_flag", "default_port", "custom_port", "with_fields"],
+    )
+    def test_cli_parsing(self, args: list[str], attr: str, expected: object) -> None:
         parser = _build_parser()
-        args = parser.parse_args(["--serve"])
-        assert args.serve is True
-
-    def test_port_default(self) -> None:
-        parser = _build_parser()
-        args = parser.parse_args(["--serve"])
-        assert args.port == 8080
-
-    def test_port_custom(self) -> None:
-        parser = _build_parser()
-        args = parser.parse_args(["--serve", "--port", "9090"])
-        assert args.port == 9090
-
-    def test_serve_with_fields(self) -> None:
-        parser = _build_parser()
-        args = parser.parse_args(["--serve", "first_name", "email"])
-        assert args.serve is True
-        assert args.fields == ["first_name", "email"]
+        parsed = parser.parse_args(args)
+        assert getattr(parsed, attr) == expected
 
 
 class TestServeServer:
@@ -46,7 +45,17 @@ class TestServeServer:
             s.bind(("", 0))
             return s.getsockname()[1]
 
-    def test_serve_returns_json(self, server_port: int) -> None:
+    @pytest.mark.parametrize(
+        "count_param, expected_count",
+        [
+            ("", 10),
+            ("?count=3", 3),
+        ],
+        ids=["default_count", "custom_count"],
+    )
+    def test_serve_returns_json(
+        self, server_port: int, count_param: str, expected_count: int
+    ) -> None:
         """Start the server in a thread and verify it returns JSON data."""
         parser = _build_parser()
         args = parser.parse_args(
@@ -61,41 +70,6 @@ class TestServeServer:
             ]
         )
 
-        # Run server in a daemon thread
-        server_thread = threading.Thread(
-            target=_run_serve,
-            args=(args,),
-            daemon=True,
-        )
-        server_thread.start()
-        time.sleep(0.5)  # Give server time to start
-
-        try:
-            url = f"http://localhost:{server_port}/"
-            response = urllib.request.urlopen(url, timeout=5)
-            data = json.loads(response.read().decode("utf-8"))
-            assert isinstance(data, list)
-            assert len(data) == 10  # default count
-            for row in data:
-                assert "first_name" in row
-                assert "email" in row
-        except Exception:
-            pytest.skip("Server did not start in time")
-
-    def test_serve_count_parameter(self, server_port: int) -> None:
-        """Verify the count query parameter works."""
-        parser = _build_parser()
-        args = parser.parse_args(
-            [
-                "--serve",
-                "--port",
-                str(server_port),
-                "--seed",
-                "42",
-                "first_name",
-            ]
-        )
-
         server_thread = threading.Thread(
             target=_run_serve,
             args=(args,),
@@ -105,11 +79,14 @@ class TestServeServer:
         time.sleep(0.5)
 
         try:
-            url = f"http://localhost:{server_port}/?count=3"
+            url = f"http://localhost:{server_port}/{count_param}"
             response = urllib.request.urlopen(url, timeout=5)
             data = json.loads(response.read().decode("utf-8"))
             assert isinstance(data, list)
-            assert len(data) == 3
+            assert len(data) == expected_count
+            for row in data:
+                assert "first_name" in row
+                assert "email" in row
         except Exception:
             pytest.skip("Server did not start in time")
 
@@ -119,6 +96,5 @@ class TestServeHandler:
         """When no fields are provided, defaults should be used."""
         parser = _build_parser()
         args = parser.parse_args(["--serve", "--seed", "42"])
-        # _run_serve sets defaults internally
         assert args.serve is True
-        assert args.fields == []  # no fields on CLI
+        assert args.fields == []

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math as _math
 import re as _re
+from collections import Counter as _Counter
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -126,6 +127,58 @@ def _detect_semantic_type(
     return None
 
 
+def _compute_null_rate_and_stats(
+    values: list[Any], base_type: str
+) -> tuple[float, dict[str, Any]]:
+    """Compute null rate and basic statistics in a single pass."""
+    total = len(values)
+    if not total:
+        return 0.0, {"count": 0}
+
+    stats: dict[str, Any] = {"count": total}
+    n_null = 0
+    _isinstance = isinstance
+    _str = str
+
+    if base_type in ("int", "float"):
+        nums: list[float] = []
+        _float = float
+        for v in values:
+            if v is None or (_isinstance(v, _str) and v.strip() == ""):
+                n_null += 1
+                continue
+            try:
+                nums.append(_float(v))
+            except (ValueError, TypeError):
+                pass
+        if nums:
+            stats["min"] = min(nums)
+            stats["max"] = max(nums)
+            stats["mean"] = sum(nums) / len(nums)
+            stats["unique"] = len(set(nums))
+    elif base_type == "str":
+        strs: list[str] = []
+        for v in values:
+            if v is None or (_isinstance(v, _str) and v.strip() == ""):
+                n_null += 1
+                continue
+            strs.append(_str(v))
+        if strs:
+            lengths = [len(s) for s in strs]
+            stats["min_length"] = min(lengths)
+            stats["max_length"] = max(lengths)
+            stats["avg_length"] = round(sum(lengths) / len(lengths), 1)
+            stats["unique"] = len(set(strs))
+    else:
+        for v in values:
+            if v is None or (_isinstance(v, _str) and v.strip() == ""):
+                n_null += 1
+
+    null_rate = round(n_null / total, 3)
+    return null_rate, stats
+
+
+# Backward-compatible shims (used by tests and potentially external code)
 def _compute_null_rate(values: list[Any]) -> float:
     """Compute the null/empty rate of a column."""
     if not values:
@@ -138,32 +191,7 @@ def _compute_null_rate(values: list[Any]) -> float:
 
 def _compute_stats(values: list[Any], base_type: str) -> dict[str, Any]:
     """Compute basic statistics for a column."""
-    stats: dict[str, Any] = {"count": len(values)}
-
-    if base_type in ("int", "float"):
-        nums = []
-        for v in values:
-            if v is None:
-                continue
-            try:
-                nums.append(float(v))
-            except (ValueError, TypeError):
-                pass
-        if nums:
-            stats["min"] = min(nums)
-            stats["max"] = max(nums)
-            stats["mean"] = sum(nums) / len(nums)
-            stats["unique"] = len(set(nums))
-
-    elif base_type == "str":
-        strs = [str(v) for v in values if v is not None]
-        if strs:
-            lengths = [len(s) for s in strs]
-            stats["min_length"] = min(lengths)
-            stats["max_length"] = max(lengths)
-            stats["avg_length"] = round(sum(lengths) / len(lengths), 1)
-            stats["unique"] = len(set(strs))
-
+    _, stats = _compute_null_rate_and_stats(values, base_type)
     return stats
 
 
@@ -182,11 +210,12 @@ def _fit_distribution(values: list[Any], base_type: str) -> dict[str, Any] | Non
         return None
 
     nums: list[float] = []
+    _float = float
     for v in values:
         if v is None:
             continue
         try:
-            nums.append(float(v))
+            nums.append(_float(v))
         except (ValueError, TypeError):
             pass
 
@@ -194,21 +223,50 @@ def _fit_distribution(values: list[Any], base_type: str) -> dict[str, Any] | Non
     if n < 20:
         return None
 
-    mean = sum(nums) / n
-    var = sum((x - mean) ** 2 for x in nums) / n
+    # --- Single-pass moment accumulation ---
+    s1 = 0.0  # sum of x
+    s2 = 0.0  # sum of x²
+    s3 = 0.0  # sum of x³
+    s4 = 0.0  # sum of x⁴
+    min_val = nums[0]
+    max_val = nums[0]
+    for x in nums:
+        s1 += x
+        x2 = x * x
+        s2 += x2
+        s3 += x2 * x
+        s4 += x2 * x2
+        if x < min_val:
+            min_val = x
+        elif x > max_val:
+            max_val = x
+
+    mean = s1 / n
+    var = s2 / n - mean * mean
     std = _math.sqrt(var) if var > 0 else 0.0
 
     if std < 1e-12:
         return None
 
-    # --- Normality test (Jarque-Bera, simplified) ---
-    skew = sum((x - mean) ** 3 for x in nums) / (n * std**3) if std > 0 else 0
-    kurtosis = sum((x - mean) ** 4 for x in nums) / (n * std**4) - 3.0 if std > 0 else 0
+    # Compute skewness and kurtosis from raw moments
+    m2 = mean * mean
+    m3 = mean * m2
+    m4 = m2 * m2
+    # Central moments from raw moments:
+    # cm2 = var (already have)
+    # cm3 = E[x³] - 3·mean·E[x²] + 2·mean³
+    cm3 = s3 / n - 3 * mean * s2 / n + 2 * m3
+    # cm4 = E[x⁴] - 4·mean·E[x³] + 6·mean²·E[x²] - 3·mean⁴
+    cm4 = s4 / n - 4 * mean * s3 / n + 6 * m2 * s2 / n - 3 * m4
+
+    std3 = std * std * std
+    std4 = std3 * std
+    skew = cm3 / std3 if std3 > 0 else 0
+    kurtosis = cm4 / std4 - 3.0 if std4 > 0 else 0
+
+    # --- Jarque-Bera ---
     jb = n / 6 * (skew**2 + kurtosis**2 / 4)
 
-    # --- Check if all positive (needed for LogNormal, Exponential, Beta) ---
-    min_val = min(nums)
-    max_val = max(nums)
     all_positive = min_val > 0
 
     best: dict[str, Any] | None = None
@@ -223,17 +281,35 @@ def _fit_distribution(values: list[Any], base_type: str) -> dict[str, Any] | Non
             "params": {"mean": round(mean, 4), "std": round(std, 4)},
         }
 
-    # LogNormal: if all positive, check log-normality
+    # LogNormal: if all positive, check log-normality (single-pass)
     if all_positive:
-        log_vals = [_math.log(x) for x in nums]
-        log_mean = sum(log_vals) / n
-        log_var = sum((x - log_mean) ** 2 for x in log_vals) / n
+        log_s1 = 0.0
+        log_s2 = 0.0
+        log_s3 = 0.0
+        log_s4 = 0.0
+        _log = _math.log
+        for x in nums:
+            lx = _log(x)
+            log_s1 += lx
+            lx2 = lx * lx
+            log_s2 += lx2
+            log_s3 += lx2 * lx
+            log_s4 += lx2 * lx2
+        log_mean = log_s1 / n
+        log_var = log_s2 / n - log_mean * log_mean
         log_std = _math.sqrt(log_var) if log_var > 0 else 0.0
         if log_std > 1e-12:
-            log_skew = sum((x - log_mean) ** 3 for x in log_vals) / (n * log_std**3)
-            log_kurt = (
-                sum((x - log_mean) ** 4 for x in log_vals) / (n * log_std**4) - 3.0
+            lm2 = log_mean * log_mean
+            lm3 = log_mean * lm2
+            lm4 = lm2 * lm2
+            log_cm3 = log_s3 / n - 3 * log_mean * log_s2 / n + 2 * lm3
+            log_cm4 = (
+                log_s4 / n - 4 * log_mean * log_s3 / n + 6 * lm2 * log_s2 / n - 3 * lm4
             )
+            ls3 = log_std**3
+            ls4 = ls3 * log_std
+            log_skew = log_cm3 / ls3 if ls3 > 0 else 0
+            log_kurt = log_cm4 / ls4 - 3.0 if ls4 > 0 else 0
             log_jb = n / 6 * (log_skew**2 + log_kurt**2 / 4)
             if log_jb < best_score:
                 best_score = log_jb
@@ -279,9 +355,7 @@ def _fit_distribution(values: list[Any], base_type: str) -> dict[str, Any] | Non
         int_vals = sorted([int(x) for x in nums])
         if int_vals[-1] > 1:
             # Estimate Zipf parameter via log-log regression
-            from collections import Counter
-
-            freq = Counter(int_vals)
+            freq = _Counter(int_vals)
             ranks = sorted(freq.keys())
             if len(ranks) >= 5:
                 log_r = [_math.log(r) for r in ranks]
@@ -437,8 +511,7 @@ class SchemaInferrer:
         """Analyze a single column."""
         base_type = _detect_base_type(values)
         semantic_type = _detect_semantic_type(col_name, values, base_type)
-        null_rate = _compute_null_rate(values)
-        stats = _compute_stats(values, base_type)
+        null_rate, stats = _compute_null_rate_and_stats(values, base_type)
         distribution = _fit_distribution(values, base_type)
 
         dataforge_field: str | None = None

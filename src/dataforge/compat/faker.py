@@ -139,40 +139,26 @@ class Faker:
         if cached is not None:
             return cached
 
-        # 1. Direct match in our Faker→DataForge map
+        # Build candidates list: Faker map → core aliases → direct name
+        # Iterate once with a single try/except per candidate.
         forge = self._forge
-        df_field = _FAKER_METHOD_MAP.get(name)
-        if df_field:
+        _resolve = forge._resolve_field
+        _getattr = getattr
+        candidates = (
+            _FAKER_METHOD_MAP.get(name),
+            _FIELD_ALIASES.get(name),
+            name,
+        )
+        for candidate in candidates:
+            if candidate is None:
+                continue
             try:
-                prov_attr, method = forge._resolve_field(df_field)
-                provider = getattr(forge, prov_attr)
-                fn = getattr(provider, method)
+                prov_attr, method = _resolve(candidate)
+                fn = _getattr(_getattr(forge, prov_attr), method)
                 self._method_cache[name] = fn
                 return fn
             except (ValueError, AttributeError):
-                pass
-
-        # 2. Core field aliases
-        df_field = _FIELD_ALIASES.get(name)
-        if df_field:
-            try:
-                prov_attr, method = forge._resolve_field(df_field)
-                provider = getattr(forge, prov_attr)
-                fn = getattr(provider, method)
-                self._method_cache[name] = fn
-                return fn
-            except (ValueError, AttributeError):
-                pass
-
-        # 3. Direct registry lookup
-        try:
-            prov_attr, method = forge._resolve_field(name)
-            provider = getattr(forge, prov_attr)
-            fn = getattr(provider, method)
-            self._method_cache[name] = fn
-            return fn
-        except (ValueError, AttributeError):
-            pass
+                continue
 
         raise AttributeError(
             f"Faker compatibility layer has no method '{name}'. "

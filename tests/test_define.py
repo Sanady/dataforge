@@ -5,12 +5,35 @@ import pytest
 from dataforge import DataForge
 
 
+# ── Parametrized element-based definitions ──────────────────────────────
+
+_ELEMENT_CASES = [
+    # (field_name, elements_arg, kwargs)
+    ("status", ["active", "inactive", "pending"], {}),
+    ("color", ["red", "green", "blue"], {}),
+    ("tier", ("gold", "silver", "bronze"), {}),
+]
+
+
 class TestDefineElements:
-    def test_define_simple_elements(self) -> None:
+    @pytest.mark.parametrize(
+        "field, elements, kwargs",
+        _ELEMENT_CASES,
+        ids=[c[0] for c in _ELEMENT_CASES],
+    )
+    def test_define_elements(
+        self, field: str, elements: list[str] | tuple[str, ...], kwargs: dict
+    ) -> None:
         forge = DataForge(seed=42)
-        forge.define("status", elements=["active", "inactive", "pending"])
-        result = forge.status()
-        assert result in ("active", "inactive", "pending")
+        forge.define(field, elements=elements, **kwargs)
+        result = (
+            forge.__getattr__(field)()
+            if not hasattr(forge, field)
+            else getattr(forge, field)()
+        )
+        # For tuples/lists the result set is the same
+        allowed = set(elements)
+        assert result in allowed
 
     def test_define_elements_count(self) -> None:
         forge = DataForge(seed=42)
@@ -19,12 +42,6 @@ class TestDefineElements:
         assert isinstance(results, list)
         assert len(results) == 10
         assert all(c in ("red", "green", "blue") for c in results)
-
-    def test_define_elements_tuple(self) -> None:
-        forge = DataForge(seed=42)
-        forge.define("tier", elements=("gold", "silver", "bronze"))
-        result = forge.tier()
-        assert result in ("gold", "silver", "bronze")
 
     def test_define_elements_reproducible(self) -> None:
         forge1 = DataForge(seed=42)

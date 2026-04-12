@@ -248,8 +248,6 @@ class Schema:
         for col in col_data:
             if col and _isinstance(col[0], _str):
                 result.append(col)  # type: ignore[arg-type]
-            elif not col or col[0] is None:
-                result.append([_str(v) if v is not None else "" for v in col])
             else:
                 result.append([_str(v) if v is not None else "" for v in col])
         return result
@@ -273,9 +271,11 @@ class Schema:
         if not self._row_lambdas:
             return rows
         columns = self._columns
+        # Pre-compute (column_name, fn) pairs as a tuple for faster iteration
+        _lambdas = tuple((columns[idx], fn) for idx, fn in self._row_lambdas.items())
         for row in rows:
-            for idx, fn in self._row_lambdas.items():
-                row[columns[idx]] = fn(row)
+            for col_name, fn in _lambdas:
+                row[col_name] = fn(row)
         return rows
 
     def generate(self, count: int = 10) -> list[dict[str, Any]]:
