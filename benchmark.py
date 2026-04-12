@@ -3,14 +3,25 @@
 Measures generation speed for single items vs batch generation
 at various scales (100, 10K, 100K, 1M).
 
+All JSON results are stored in the ``benchmarks/`` directory (git-ignored).
+Relative paths passed to ``--save`` / ``--compare`` are resolved under that
+directory automatically; absolute paths are left unchanged.
+
 Usage:
-    uv run python benchmark.py                 # run and print results
-    uv run python benchmark.py --save out.json  # run and save to JSON
-    uv run python benchmark.py --compare baseline.json  # compare against baseline
-    uv run python benchmark.py --save out.json --compare baseline.json  # both
+    uv run python benchmark.py                        # run and print results
+    uv run python benchmark.py --save out.json        # → benchmarks/out.json
+    uv run python benchmark.py --compare base.json    # → benchmarks/base.json
+    uv run python benchmark.py --save out.json --compare base.json  # both
 """
 
+from __future__ import annotations
+
+import os
 import time
+
+_BENCHMARKS_DIR: str = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "benchmarks"
+)
 
 from dataforge import DataForge
 
@@ -571,13 +582,22 @@ def benchmark_schema(forge: DataForge) -> None:
             os.unlink(path)
 
 
+def _resolve_path(path: str) -> str:
+    """Resolve *path* under ``_BENCHMARKS_DIR`` when it is relative."""
+    if os.path.isabs(path):
+        return path
+    return os.path.join(_BENCHMARKS_DIR, path)
+
+
 def _save_results(path: str) -> None:
-    """Save benchmark results to a JSON file."""
+    """Save benchmark results to a JSON file inside ``benchmarks/``."""
     import json
 
-    with open(path, "w", encoding="utf-8") as f:
+    resolved = _resolve_path(path)
+    os.makedirs(os.path.dirname(resolved), exist_ok=True)
+    with open(resolved, "w", encoding="utf-8") as f:
         json.dump(_results, f, indent=2, sort_keys=True)
-    print(f"\n  Results saved to {path}")
+    print(f"\n  Results saved to {resolved}")
 
 
 def _compare_results(baseline_path: str) -> int:
@@ -587,15 +607,16 @@ def _compare_results(baseline_path: str) -> int:
     Returns -1 if the baseline file does not exist yet (first run).
     """
     import json
-    import os
 
-    if not os.path.exists(baseline_path):
+    resolved = _resolve_path(baseline_path)
+
+    if not os.path.exists(resolved):
         print(
-            f"\n  NOTE: Baseline file '{baseline_path}' not found — skipping comparison (first run)."
+            f"\n  NOTE: Baseline file '{resolved}' not found — skipping comparison (first run)."
         )
         return 0
 
-    with open(baseline_path, encoding="utf-8") as f:
+    with open(resolved, encoding="utf-8") as f:
         baseline: dict[str, float] = json.load(f)
 
     print(f"\n{'=' * 72}")
@@ -654,12 +675,12 @@ def main() -> int:
     parser.add_argument(
         "--save",
         metavar="PATH",
-        help="Save results as JSON to this file",
+        help="Save results as JSON (relative paths resolve under benchmarks/)",
     )
     parser.add_argument(
         "--compare",
         metavar="PATH",
-        help="Compare results against a baseline JSON file",
+        help="Compare results against a baseline JSON (relative paths resolve under benchmarks/)",
     )
     args = parser.parse_args()
 

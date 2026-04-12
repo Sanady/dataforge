@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math as _math
 import re as _re
+from collections import Counter as _Counter
 from typing import Any, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -25,7 +27,7 @@ _SEMANTIC_PATTERNS: list[tuple[str, _re.Pattern[str], str]] = [
     ("date_iso", _re.compile(r"^\d{4}-\d{2}-\d{2}$"), "date"),
     ("datetime_iso", _re.compile(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}"), "datetime"),
     ("time_iso", _re.compile(r"^\d{2}:\d{2}(:\d{2})?$"), "time"),
-    ("zipcode_us", _re.compile(r"^\d{5}(-\d{4})?$"), "zipcode"),
+    ("zipcode_us", _re.compile(r"^\d{5}(-\d{4})?$"), "zip_code"),
     ("ssn", _re.compile(r"^\d{3}-\d{2}-\d{4}$"), "ssn"),
     (
         "credit_card",
@@ -125,27 +127,28 @@ def _detect_semantic_type(
     return None
 
 
-def _compute_null_rate(values: list[Any]) -> float:
-    """Compute the null/empty rate of a column."""
-    if not values:
-        return 0.0
-    n_null = sum(
-        1 for v in values if v is None or (isinstance(v, str) and v.strip() == "")
-    )
-    return round(n_null / len(values), 3)
+def _compute_null_rate_and_stats(
+    values: list[Any], base_type: str
+) -> tuple[float, dict[str, Any]]:
+    """Compute null rate and basic statistics in a single pass."""
+    total = len(values)
+    if not total:
+        return 0.0, {"count": 0}
 
-
-def _compute_stats(values: list[Any], base_type: str) -> dict[str, Any]:
-    """Compute basic statistics for a column."""
-    stats: dict[str, Any] = {"count": len(values)}
+    stats: dict[str, Any] = {"count": total}
+    n_null = 0
+    _isinstance = isinstance
+    _str = str
 
     if base_type in ("int", "float"):
-        nums = []
+        nums: list[float] = []
+        _float = float
         for v in values:
-            if v is None:
+            if v is None or (_isinstance(v, _str) and v.strip() == ""):
+                n_null += 1
                 continue
             try:
-                nums.append(float(v))
+                nums.append(_float(v))
             except (ValueError, TypeError):
                 pass
         if nums:
@@ -153,17 +156,227 @@ def _compute_stats(values: list[Any], base_type: str) -> dict[str, Any]:
             stats["max"] = max(nums)
             stats["mean"] = sum(nums) / len(nums)
             stats["unique"] = len(set(nums))
-
     elif base_type == "str":
-        strs = [str(v) for v in values if v is not None]
+        strs: list[str] = []
+        for v in values:
+            if v is None or (_isinstance(v, _str) and v.strip() == ""):
+                n_null += 1
+                continue
+            strs.append(_str(v))
         if strs:
             lengths = [len(s) for s in strs]
             stats["min_length"] = min(lengths)
             stats["max_length"] = max(lengths)
             stats["avg_length"] = round(sum(lengths) / len(lengths), 1)
             stats["unique"] = len(set(strs))
+    else:
+        for v in values:
+            if v is None or (_isinstance(v, _str) and v.strip() == ""):
+                n_null += 1
 
+    null_rate = round(n_null / total, 3)
+    return null_rate, stats
+
+
+# Backward-compatible shims (used by tests and potentially external code)
+def _compute_null_rate(values: list[Any]) -> float:
+    """Compute the null/empty rate of a column."""
+    null_rate, _ = _compute_null_rate_and_stats(values, "none")
+    return null_rate
+
+
+def _compute_stats(values: list[Any], base_type: str) -> dict[str, Any]:
+    """Compute basic statistics for a column."""
+    _, stats = _compute_null_rate_and_stats(values, base_type)
     return stats
+
+
+# ---------------------------------------------------------------------------
+# Distribution fitting — pure stdlib, no scipy
+# ---------------------------------------------------------------------------
+
+
+def _moments_from_sums(
+    n: int, s1: float, s2: float, s3: float, s4: float
+) -> tuple[float, float, float, float]:
+    """Compute (mean, std, skewness, kurtosis) from raw moment sums."""
+    mean = s1 / n
+    var = s2 / n - mean * mean
+    std = _math.sqrt(var) if var > 0 else 0.0
+    if std < 1e-12:
+        return mean, 0.0, 0.0, 0.0
+    m2 = mean * mean
+    m3 = mean * m2
+    m4 = m2 * m2
+    cm3 = s3 / n - 3 * mean * s2 / n + 2 * m3
+    cm4 = s4 / n - 4 * mean * s3 / n + 6 * m2 * s2 / n - 3 * m4
+    std3 = std * std * std
+    std4 = std3 * std
+    skew = cm3 / std3 if std3 > 0 else 0
+    kurtosis = cm4 / std4 - 3.0 if std4 > 0 else 0
+    return mean, std, skew, kurtosis
+
+
+def _fit_distribution(values: list[Any], base_type: str) -> dict[str, Any] | None:
+    """Detect the best-fitting distribution for numeric data (stdlib only).
+
+    Checks: Normal, LogNormal, Exponential, Beta, Zipf.
+    Returns a dict with ``{"name": ..., "params": {...}}`` or ``None``.
+    """
+    if base_type not in ("int", "float"):
+        return None
+
+    nums: list[float] = []
+    _float = float
+    for v in values:
+        if v is None:
+            continue
+        try:
+            nums.append(_float(v))
+        except (ValueError, TypeError):
+            pass
+
+    n = len(nums)
+    if n < 20:
+        return None
+
+    # --- Single-pass moment accumulation ---
+    s1 = 0.0  # sum of x
+    s2 = 0.0  # sum of x²
+    s3 = 0.0  # sum of x³
+    s4 = 0.0  # sum of x⁴
+    min_val = nums[0]
+    max_val = nums[0]
+    for x in nums:
+        s1 += x
+        x2 = x * x
+        s2 += x2
+        s3 += x2 * x
+        s4 += x2 * x2
+        if x < min_val:
+            min_val = x
+        elif x > max_val:
+            max_val = x
+
+    mean, std, skew, kurtosis = _moments_from_sums(n, s1, s2, s3, s4)
+    var = s2 / n - mean * mean
+
+    if std < 1e-12:
+        return None
+
+    # --- Jarque-Bera ---
+    jb = n / 6 * (skew**2 + kurtosis**2 / 4)
+
+    all_positive = min_val > 0
+
+    best: dict[str, Any] | None = None
+    best_score = float("inf")
+
+    # Normal: JB ≈ 0 means normal
+    normal_score = jb
+    if normal_score < best_score:
+        best_score = normal_score
+        best = {
+            "name": "normal",
+            "params": {"mean": round(mean, 4), "std": round(std, 4)},
+        }
+
+    # LogNormal: if all positive, check log-normality (single-pass)
+    if all_positive:
+        log_s1 = 0.0
+        log_s2 = 0.0
+        log_s3 = 0.0
+        log_s4 = 0.0
+        _log = _math.log
+        for x in nums:
+            lx = _log(x)
+            log_s1 += lx
+            lx2 = lx * lx
+            log_s2 += lx2
+            log_s3 += lx2 * lx
+            log_s4 += lx2 * lx2
+        log_mean, log_std, log_skew, log_kurt = _moments_from_sums(
+            n, log_s1, log_s2, log_s3, log_s4
+        )
+        if log_std > 1e-12:
+            log_jb = n / 6 * (log_skew**2 + log_kurt**2 / 4)
+            if log_jb < best_score:
+                best_score = log_jb
+                best = {
+                    "name": "lognormal",
+                    "params": {"mu": round(log_mean, 4), "sigma": round(log_std, 4)},
+                }
+
+    # Exponential: check if data matches (memoryless, all positive)
+    if all_positive and skew > 1.5:
+        # For exponential, skewness ≈ 2, kurtosis ≈ 6
+        exp_score = abs(skew - 2.0) + abs(kurtosis - 6.0) / 3
+        if exp_score < best_score:
+            best_score = exp_score
+            rate = 1.0 / mean if mean > 0 else 1.0
+            best = {
+                "name": "exponential",
+                "params": {"rate": round(rate, 4)},
+            }
+
+    # Beta: values in (0, 1) range
+    if all_positive and max_val <= 1.0:
+        sample_mean = mean
+        sample_var = var
+        if sample_var < sample_mean * (1 - sample_mean):
+            common = sample_mean * (1 - sample_mean) / sample_var - 1
+            alpha = sample_mean * common
+            beta_param = (1 - sample_mean) * common
+            if alpha > 0 and beta_param > 0:
+                beta_score = abs(skew) + abs(kurtosis) / 2
+                if beta_score < best_score:
+                    best_score = beta_score
+                    best = {
+                        "name": "beta",
+                        "params": {
+                            "alpha": round(alpha, 4),
+                            "beta": round(beta_param, 4),
+                        },
+                    }
+
+    # Zipf: check if data is integer, positive, and heavy-tailed
+    if base_type == "int" and all_positive and min_val >= 1:
+        int_vals = sorted([int(x) for x in nums])
+        if int_vals[-1] > 1:
+            # Estimate Zipf parameter via log-log regression
+            freq = _Counter(int_vals)
+            ranks = sorted(freq.keys())
+            if len(ranks) >= 5:
+                log_r = [_math.log(r) for r in ranks]
+                log_f = [_math.log(freq[r]) for r in ranks]
+                n_pts = len(ranks)
+                mean_lr = sum(log_r) / n_pts
+                mean_lf = sum(log_f) / n_pts
+                num = sum(
+                    (log_r[i] - mean_lr) * (log_f[i] - mean_lf) for i in range(n_pts)
+                )
+                den = sum((log_r[i] - mean_lr) ** 2 for i in range(n_pts))
+                if den > 0:
+                    slope = num / den
+                    if slope < -0.5:  # Zipf-like negative slope
+                        s_param = -slope
+                        # Compute R² for goodness of fit
+                        ss_res = sum(
+                            (log_f[i] - (mean_lf + slope * (log_r[i] - mean_lr))) ** 2
+                            for i in range(n_pts)
+                        )
+                        ss_tot = sum((log_f[i] - mean_lf) ** 2 for i in range(n_pts))
+                        r_sq = 1 - ss_res / ss_tot if ss_tot > 0 else 0
+                        if r_sq > 0.8:
+                            zipf_score = (1 - r_sq) * 10
+                            if zipf_score < best_score:
+                                best_score = zipf_score
+                                best = {
+                                    "name": "zipf",
+                                    "params": {"s": round(s_param, 4)},
+                                }
+
+    return best
 
 
 class ColumnAnalysis:
@@ -176,6 +389,7 @@ class ColumnAnalysis:
         "null_rate",
         "stats",
         "dataforge_field",
+        "distribution",
     )
 
     def __init__(
@@ -186,6 +400,7 @@ class ColumnAnalysis:
         null_rate: float,
         stats: dict[str, Any],
         dataforge_field: str | None,
+        distribution: dict[str, Any] | None = None,
     ) -> None:
         self.name = name
         self.base_type = base_type
@@ -193,11 +408,13 @@ class ColumnAnalysis:
         self.null_rate = null_rate
         self.stats = stats
         self.dataforge_field = dataforge_field
+        self.distribution = distribution
 
     def __repr__(self) -> str:
+        dist_str = f", dist={self.distribution['name']}" if self.distribution else ""
         return (
             f"ColumnAnalysis(name={self.name!r}, type={self.base_type}, "
-            f"semantic={self.semantic_type!r}, field={self.dataforge_field!r})"
+            f"semantic={self.semantic_type!r}, field={self.dataforge_field!r}{dist_str})"
         )
 
 
@@ -283,8 +500,8 @@ class SchemaInferrer:
         """Analyze a single column."""
         base_type = _detect_base_type(values)
         semantic_type = _detect_semantic_type(col_name, values, base_type)
-        null_rate = _compute_null_rate(values)
-        stats = _compute_stats(values, base_type)
+        null_rate, stats = _compute_null_rate_and_stats(values, base_type)
+        distribution = _fit_distribution(values, base_type)
 
         dataforge_field: str | None = None
         if semantic_type:
@@ -304,10 +521,6 @@ class SchemaInferrer:
         if dataforge_field is None:
             if base_type == "bool":
                 dataforge_field = "boolean"
-            elif base_type == "int":
-                dataforge_field = "misc.random_int"
-            elif base_type == "float":
-                dataforge_field = "misc.random_int"
 
         return ColumnAnalysis(
             name=col_name,
@@ -316,6 +529,7 @@ class SchemaInferrer:
             null_rate=null_rate,
             stats=stats,
             dataforge_field=dataforge_field,
+            distribution=distribution,
         )
 
     def describe(self) -> str:
@@ -335,6 +549,10 @@ class SchemaInferrer:
                 stat_parts = [f"{k}={v}" for k, v in a.stats.items() if k != "count"]
                 if stat_parts:
                     lines.append(f"  {'':25} stats: {', '.join(stat_parts)}")
+            if a.distribution:
+                dist = a.distribution
+                params = ", ".join(f"{k}={v}" for k, v in dist["params"].items())
+                lines.append(f"  {'':25} distribution: {dist['name']}({params})")
         lines.append("=" * 60)
         mapped_count = sum(1 for a in self._analyses if a.dataforge_field)
         lines.append(
