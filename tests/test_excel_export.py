@@ -7,7 +7,7 @@ import pytest
 
 openpyxl = pytest.importorskip("openpyxl")
 
-from dataforge import DataForge
+from dataforge import DataForge  # noqa: E402
 
 
 # ── Parametrized export scenarios ───────────────────────────────────────

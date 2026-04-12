@@ -4,9 +4,8 @@ import pytest
 
 hypothesis = pytest.importorskip("hypothesis")
 
-from hypothesis import given, settings
-
-from dataforge.compat.hypothesis import forge_strategy, strategy
+from dataforge.compat.hypothesis import forge_strategy, strategy  # noqa: E402
+from hypothesis import given, settings  # noqa: E402
 
 
 # ── Parametrized single-field strategies ────────────────────────────────

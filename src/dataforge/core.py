@@ -14,6 +14,7 @@ Usage::
 
 import importlib
 from typing import Any
+from collections.abc import Callable
 from types import ModuleType
 
 from dataforge.backend import RandomEngine
@@ -407,7 +408,7 @@ class DataForge:
         name: str,
         elements: list[Any] | tuple[Any, ...] | None = None,
         weights: list[float] | tuple[float, ...] | None = None,
-        func: "Callable[..., Any] | None" = None,
+        func: Callable[..., Any] | None = None,
     ) -> None:
         """Define a custom field for ad-hoc data generation.
 

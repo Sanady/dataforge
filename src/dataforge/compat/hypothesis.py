@@ -50,7 +50,6 @@ def strategy(
         ) from exc
 
     from dataforge.core import DataForge
-    from dataforge.backend import RandomEngine
 
     # Resolve the field callable once at strategy creation time
     # so we only pay the lookup cost once, not per draw.
