@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.5.0](https://github.com/Sanady/dataforge-py/compare/0.4.0...0.5.0) (2026-04-12)
+
+
+### Features
+
+* add 10 competitive features with comprehensive tests ([3956335](https://github.com/Sanady/dataforge-py/commit/3956335b06a10cf373cb9e3e3b492c09fc790177))
+* add 10 competitive features with tests, optimizations, and documentation ([12177df](https://github.com/Sanady/dataforge-py/commit/12177df6ef99fabbfc9d85f2e3f8445879074a52))
+* parametrize tests, optimize performance, rework benchmarks, and document 10 new features ([19b39ac](https://github.com/Sanady/dataforge-py/commit/19b39acefb6503c5266e902caa2c8ee3d366d635))
+
+
+### Bug Fixes
+
+* resolve ruff lint errors (F401, F821, E402) ([3f0d0c2](https://github.com/Sanady/dataforge-py/commit/3f0d0c21925817b2574f7736e29211e83b4c3c1a))
+
+
+### Documentation
+
+* add 11 example files showcasing new competitive features ([c25792e](https://github.com/Sanady/dataforge-py/commit/c25792e79fb5672d66ae1ba9f85438b9d2508e8e))
+
 ## [0.4.0](https://github.com/Sanady/dataforge-py/compare/0.3.0...0.4.0) (2026-04-02)
 
 
