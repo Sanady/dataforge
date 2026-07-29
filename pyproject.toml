@@ -56,7 +56,7 @@ llm = "dataforge.providers.llm"
 dataforge = "dataforge.pytest_plugin"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.15.4,<0.16"]
+dev = ["pytest>=8.0", "pytest-asyncio>=0.24", "ruff>=0.15.4,<0.17"]
 
 [tool.ruff]
 target-version = "py312"
