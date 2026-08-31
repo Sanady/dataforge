@@ -455,7 +455,7 @@ Every method accepts `count=N` for batch generation.
 
 ---
 
-## 17 Locales
+## 28 Locales
 
 ```python
 forge = DataForge(locale="fr_FR")
@@ -472,7 +472,9 @@ forge.person.full_name()  # "田中太郎"
 | `de_DE` | `fr_FR` | `es_ES` | `it_IT` |
 | `pt_BR` | `nl_NL` | `pl_PL` | `ru_RU` |
 | `ar_SA` | `hi_IN` | `ja_JP` | `ko_KR` |
-| `zh_CN` | | | |
+| `zh_CN` | `uk_UA` | `cs_CZ` | `sk_SK` |
+| `ro_RO` | `hu_HU` | `el_GR` | `da_DK` |
+| `fi_FI` | `nb_NO` | `sv_SE` | `tr_TR` |
 
 Multi-locale mixing:
 
