@@ -661,6 +661,123 @@ class TestLocaleDataPresence:
         assert isinstance(mod.last_names, tuple)
 
 
+# Phase 6 locales: uk_UA, cs_CZ, sk_SK, ro_RO, hu_HU, el_GR
+
+
+PHASE6_LOCALES = ["uk_UA", "cs_CZ", "sk_SK", "ro_RO", "hu_HU", "el_GR"]
+
+
+class TestPhase6Locales:
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_person_first_name(self, locale: str) -> None:
+        forge = DataForge(locale=locale, seed=42)
+        name = forge.person.first_name()
+        assert isinstance(name, str)
+        assert len(name) > 0
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_person_full_name(self, locale: str) -> None:
+        forge = DataForge(locale=locale, seed=42)
+        name = forge.person.full_name()
+        assert isinstance(name, str)
+        assert " " in name
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_person_batch(self, locale: str) -> None:
+        forge = DataForge(locale=locale, seed=42)
+        names = forge.person.first_name(count=10)
+        assert isinstance(names, list)
+        assert len(names) == 10
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_address_city(self, locale: str) -> None:
+        forge = DataForge(locale=locale, seed=42)
+        city = forge.address.city()
+        assert isinstance(city, str)
+        assert len(city) > 0
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_address_full_address(self, locale: str) -> None:
+        forge = DataForge(locale=locale, seed=42)
+        addr = forge.address.full_address()
+        assert isinstance(addr, str)
+        assert len(addr) > 5
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_company_name(self, locale: str) -> None:
+        forge = DataForge(locale=locale, seed=42)
+        name = forge.company.company_name()
+        assert isinstance(name, str)
+        assert len(name) > 0
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_phone_number(self, locale: str) -> None:
+        forge = DataForge(locale=locale, seed=42)
+        phone = forge.phone.phone_number()
+        assert isinstance(phone, str)
+        assert len(phone) > 0
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_internet_email(self, locale: str) -> None:
+        forge = DataForge(locale=locale, seed=42)
+        email = forge.internet.email()
+        assert isinstance(email, str)
+        assert "@" in email
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_schema_with_locale(self, locale: str) -> None:
+        forge = DataForge(locale=locale, seed=42)
+        schema = forge.schema(["first_name", "city", "email"])
+        rows = schema.generate(count=10)
+        assert len(rows) == 10
+        assert all("first_name" in r for r in rows)
+        assert all("city" in r for r in rows)
+        assert all("email" in r for r in rows)
+
+
+class TestPhase6LocaleDataPresence:
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_person_data_has_names(self, locale: str) -> None:
+        import importlib
+
+        mod = importlib.import_module(f"dataforge.locales.{locale}.person")
+        assert hasattr(mod, "first_names")
+        assert hasattr(mod, "last_names")
+        assert len(mod.first_names) > 10
+        assert len(mod.last_names) > 10
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_address_data_has_cities(self, locale: str) -> None:
+        import importlib
+
+        mod = importlib.import_module(f"dataforge.locales.{locale}.address")
+        assert hasattr(mod, "cities")
+        assert hasattr(mod, "street_names")
+        assert len(mod.cities) > 5
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_company_data_exists(self, locale: str) -> None:
+        import importlib
+
+        mod = importlib.import_module(f"dataforge.locales.{locale}.company")
+        assert hasattr(mod, "company_suffixes")
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_phone_data_exists(self, locale: str) -> None:
+        import importlib
+
+        mod = importlib.import_module(f"dataforge.locales.{locale}.phone")
+        assert hasattr(mod, "phone_formats")
+
+    @pytest.mark.parametrize("locale", PHASE6_LOCALES)
+    def test_data_is_immutable_tuples(self, locale: str) -> None:
+        import importlib
+
+        mod = importlib.import_module(f"dataforge.locales.{locale}.person")
+        assert isinstance(mod.first_names, tuple)
+        assert isinstance(mod.last_names, tuple)
+
+
 # @provider decorator
 
 

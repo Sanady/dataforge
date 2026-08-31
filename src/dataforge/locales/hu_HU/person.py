@@ -1,0 +1,85 @@
+"""hu_HU person data — Hungarian first names and last names.
+
+Data is stored in immutable tuples for maximum memory efficiency
+and near-instant load times (compiled to bytecode by Python).
+"""
+
+male_first_names: tuple[str, ...] = (
+    "Ádám",
+    "András",
+    "Attila",
+    "Balázs",
+    "Bence",
+    "Csaba",
+    "Dániel",
+    "Dávid",
+    "Ferenc",
+    "Gábor",
+    "György",
+    "István",
+    "János",
+    "József",
+    "Károly",
+    "László",
+    "Márton",
+    "Máté",
+    "Miklós",
+    "Péter",
+    "Sándor",
+    "Tamás",
+    "Tibor",
+    "Zoltán",
+)
+
+female_first_names: tuple[str, ...] = (
+    "Andrea",
+    "Anikó",
+    "Anna",
+    "Barbara",
+    "Beáta",
+    "Dóra",
+    "Edit",
+    "Erika",
+    "Eszter",
+    "Éva",
+    "Gabriella",
+    "Ildikó",
+    "Judit",
+    "Katalin",
+    "Krisztina",
+    "Mária",
+    "Mónika",
+    "Orsolya",
+    "Réka",
+    "Szilvia",
+    "Viktória",
+    "Zsuzsanna",
+)
+
+first_names: tuple[str, ...] = male_first_names + female_first_names
+
+last_names: tuple[str, ...] = (
+    "Balogh",
+    "Farkas",
+    "Fehér",
+    "Gulyás",
+    "Horváth",
+    "Juhász",
+    "Kiss",
+    "Kovács",
+    "Lakatos",
+    "Mészáros",
+    "Molnár",
+    "Nagy",
+    "Németh",
+    "Oláh",
+    "Papp",
+    "Simon",
+    "Szabó",
+    "Székely",
+    "Szilágyi",
+    "Szűcs",
+    "Takács",
+    "Tóth",
+    "Varga",
+)
