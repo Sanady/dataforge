@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.6.0](https://github.com/Sanady/dataforge-py/compare/0.5.0...0.6.0) (2026-08-31)
+
+
+### Features
+
+* add 6 European locales (uk_UA, cs_CZ, sk_SK, ro_RO, hu_HU, el_GR) ([814b89e](https://github.com/Sanady/dataforge-py/commit/814b89ed6a2f7776e897e3f848ebee1464766f0b))
+* add 6 European locales (uk_UA, cs_CZ, sk_SK, ro_RO, hu_HU, el_GR) ([2a1c8b9](https://github.com/Sanady/dataforge-py/commit/2a1c8b9b9e4f6c524e8f846b675df02b4d1edfdd))
+
+
+### Bug Fixes
+
+* add PyPI classifiers so shields.io python-version badge resolves ([eeab27a](https://github.com/Sanady/dataforge-py/commit/eeab27acb9beae100742356254a7ba304991e08d))
+* add PyPI classifiers so shields.io python-version badge resolves ([4200585](https://github.com/Sanady/dataforge-py/commit/42005850e4c4a5eb75d82625ce091d8495155cba))
+
+
+### Documentation
+
+* restructure README for discoverability and add agentic guide files ([cec10ed](https://github.com/Sanady/dataforge-py/commit/cec10edeef855086aba8672f26544de5eb697894))
+* restructure README for discoverability and add agentic guide files ([ca59c44](https://github.com/Sanady/dataforge-py/commit/ca59c442d94dd56ae009a0ebfd968fd7cb368b79))
+* update README locale list to all 28 supported locales ([941a2b7](https://github.com/Sanady/dataforge-py/commit/941a2b781a4cb9b934a8504f64679ef579454641))
+* update README locale list to all 28 supported locales ([087a4b3](https://github.com/Sanady/dataforge-py/commit/087a4b3d8088e9095ef194c06a360158024b29c1))
+
 ## [0.5.0](https://github.com/Sanady/dataforge-py/compare/0.4.0...0.5.0) (2026-04-12)
 
 
