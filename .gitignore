@@ -43,3 +43,6 @@ benchmarks/
 .DS_Store
 Thumbs.db
 nul
+
+# AI agent workspace
+.codex-tmp/

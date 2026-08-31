@@ -1,546 +1,106 @@
 # DataForge
 
-**High-performance, zero-dependency fake data generator for Python.**
+[![PyPI version](https://img.shields.io/pypi/v/dataforge-py.svg)](https://pypi.org/project/dataforge-py/)
+[![Python versions](https://img.shields.io/pypi/pyversions/dataforge-py.svg)](https://pypi.org/project/dataforge-py/)
+[![CI](https://github.com/Sanady/dataforge-py/actions/workflows/ci.yml/badge.svg)](https://github.com/Sanady/dataforge-py/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-DataForge generates realistic fake data at millions of items per second. It uses vectorized batch generation, lazy-loaded locale data, and pre-resolved field lookups to deliver throughput that is orders of magnitude faster than existing alternatives — with zero runtime dependencies.
+**The fastest fake data generator for Python. Zero dependencies. 18M items/second. Drop-in Faker replacement.**
+
+```bash
+pip install dataforge-py
+```
 
 ```python
 from dataforge import DataForge
 
 forge = DataForge(seed=42)
 
-forge.person.first_name()                # "James"
-forge.internet.email()                   # "james.smith@gmail.com"
-forge.person.first_name(count=1_000_000) # 1M names in ~55ms
+forge.person.full_name()                  # "James Smith"
+forge.internet.email()                    # "james.smith@gmail.com"
+forge.person.first_name(count=1_000_000)  # 1M names in ~55ms
 ```
 
 ---
 
-## Table of Contents
+## Why DataForge?
 
-- [Features](#features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Providers](#providers) (27 providers, 198 methods)
-- [Schema API](#schema-api)
-- [Bulk Export](#bulk-export)
-- [Streaming Export](#streaming-export)
-- [Integrations](#integrations) (PyArrow, Polars, Pydantic, SQLAlchemy)
-- [Command Line Interface](#command-line-interface)
-- [Pytest Plugin](#pytest-plugin)
-- [Unique Values](#unique-values)
-- [Locales](#locales) (17 locales)
-- **Advanced Features**
-  - [Faker Compatibility Layer](#faker-compatibility-layer)
-  - [Multi-Locale Mixing](#multi-locale-mixing)
-  - [Dynamic Fields (`define()`)](#dynamic-fields-define)
-  - [Field Transform Pipelines (`pipe()`)](#field-transform-pipelines-pipe)
-  - [Type-Driven Schema](#type-driven-schema)
-  - [Data Contract Validation](#data-contract-validation)
-  - [Hypothesis Strategy Bridge](#hypothesis-strategy-bridge)
-  - [HTTP Mock Data Server](#http-mock-data-server)
-  - [XLSX Export](#xlsx-export)
-  - [Statistical Distribution Fitting](#statistical-distribution-fitting)
-  - [Time-Series Generation](#time-series-generation)
-  - [Schema Inference](#schema-inference)
-  - [Chaos Testing](#chaos-testing)
-  - [Constraint Engine](#constraint-engine)
-  - [PII Anonymization](#pii-anonymization)
-  - [Database Seeding](#database-seeding)
-  - [OpenAPI / JSON Schema Import](#openapi--json-schema-import)
-  - [Streaming to Message Queues](#streaming-to-message-queues)
-  - [Interactive TUI](#interactive-tui)
-- [Examples](#examples)
-- [Benchmarks](#benchmarks)
-- [CI/CD](#cicd)
-- [Contributing](#contributing)
-- [License](#license)
+| | DataForge | Faker |
+|---|---|---|
+| **Throughput** | **18M items/s** | ~50K items/s |
+| **Dependencies** | **Zero** | 3+ |
+| **Batch generation** | `count=N` on every method | Loop manually |
+| **Schema API** | Built-in, columnar | Third-party |
+| **Bulk export** | CSV, JSONL, SQL, Parquet, Arrow, Polars | None |
+| **CLI** | Built-in | None |
+| **Pytest plugin** | Built-in fixtures | Third-party |
+| **Type hints** | Full PEP 484 + `@overload` | Partial |
+| **Migration effort** | `from dataforge.compat import Faker` | — |
+
+DataForge isn't a wrapper around Faker — it's a ground-up rewrite with vectorized batch paths, pre-resolved field lookups, lazy locale loading, and columnar-first schema generation. If you're generating more than a few hundred records, the difference is measurable in orders of magnitude.
 
 ---
-
-## Features
-
-- **High Performance** — scalar generation at millions of items/s, batch generation at ~18M items/s, schema generation at ~343K rows/s
-- **Vectorized Batches** — every method accepts `count=N` and returns a list, using optimized batch paths with vectorized internals for internet, datetime, and finance providers
-- **Zero Dependencies** — core library has no external dependencies
-- **Type Safe** — fully typed with PEP 484 type hints and `@overload` signatures
-- **Reproducible** — global seeding for deterministic output
-- **Lazy Loading** — locales and providers are loaded only when first accessed
-- **Schema API** — define reusable data blueprints with pre-resolved field lookups and columnar-first generation
-- **Rich CLI** — generate CSV, JSON, or JSONL directly from the terminal
-- **Bulk Export** — export to dict, CSV, JSONL, SQL, DataFrame, Arrow, Polars, or Parquet with optimized columnar writers
-- **Streaming Export** — memory-efficient streaming writes for arbitrarily large datasets
-- **Pytest Plugin** — `forge`, `fake`, and `forge_unseeded` fixtures with seed markers
-- **Unique Values** — three-layer proxy with set-based dedup and adaptive over-sampling for batches
-- **Time-Series** — generate synthetic time-series with trends, seasonality, noise, anomalies, and regime changes
-- **Schema Inference** — auto-detect types and semantic patterns from CSV, DataFrames, or records
-- **Chaos Testing** — inject nulls, type mismatches, boundary values, encoding chaos, and more for data quality testing
-- **Constraint Engine** — geographic hierarchies, temporal ordering, statistical correlation, conditional pools, and range constraints
-- **PII Anonymization** — deterministic HMAC-SHA256 anonymization with format-preserving output and referential integrity
-- **Database Seeding** — SQLAlchemy-powered table introspection and bulk insertion with dialect optimizations
-- **OpenAPI / JSON Schema Import** — generate fake data from API specs with `$ref` resolution
-- **Streaming to Queues** — emit data to HTTP, Kafka, or RabbitMQ with token-bucket rate limiting
-- **Interactive TUI** — terminal UI for browsing providers, building schemas, and exporting data
-- **Faker Compatibility** — drop-in `Faker` replacement with 57 method mappings for painless migration
-- **Multi-Locale Mixing** — pass a list of locales to randomly blend data from multiple languages
-- **Dynamic Fields** — `define()` custom fields with element lists, weighted pools, or arbitrary callables
-- **Transform Pipelines** — `pipe()` chains composable transforms (casing, truncation, hashing, redaction) onto any field
-- **Type-Driven Schema** — auto-generate schemas from `@dataclass` and `TypedDict` classes via annotation introspection
-- **Data Contract Validation** — validate generated or imported data against semantic regex patterns and non-empty constraints
-- **Hypothesis Bridge** — `strategy()` and `forge_strategy()` integrate DataForge fields into Hypothesis property-based tests
-- **HTTP Mock Server** — `dataforge --serve` starts a zero-dependency JSON API that returns fake data on every GET
-- **XLSX Export** — `to_excel()` writes schemas to `.xlsx` files using streaming `openpyxl` workbooks
-- **Distribution Fitting** — infer Normal, LogNormal, Exponential, Beta, and Zipf distributions from numeric columns
-- **27 Providers** — person, address, internet, company, phone, finance, datetime, color, file, network, lorem, barcode, misc, automotive, crypto, ecommerce, education, geo, government, medical, payment, profile, science, text, ai\_prompt, llm, ai\_chat
-- **17 Locales** — en\_US, en\_GB, en\_AU, en\_CA, de\_DE, fr\_FR, es\_ES, it\_IT, pt\_BR, nl\_NL, pl\_PL, ru\_RU, ar\_SA, hi\_IN, ja\_JP, ko\_KR, zh\_CN
-
-## Installation
-
-```bash
-# Standard installation (zero dependencies)
-pip install dataforge-py
-
-# With uv
-uv add dataforge-py
-```
-
-**Optional integrations** (install separately as needed):
-
-```bash
-pip install pyarrow    # to_arrow(), to_parquet()
-pip install polars     # to_polars()
-pip install pandas     # to_dataframe()
-pip install pydantic   # schema_from_pydantic()
-pip install sqlalchemy # schema_from_sqlalchemy(), DatabaseSeeder
-pip install openpyxl   # to_excel()
-pip install hypothesis # Hypothesis strategy bridge
-```
-
-**Optional extras** (bundled in pyproject.toml):
-
-```bash
-pip install dataforge-py[db]       # SQLAlchemy (database seeding)
-pip install dataforge-py[kafka]    # confluent-kafka (Kafka streaming)
-pip install dataforge-py[rabbitmq] # pika (RabbitMQ streaming)
-pip install dataforge-py[tui]      # textual (interactive TUI)
-pip install dataforge-py[all]      # all optional extras
-```
-
-**Requires Python >= 3.12.**
 
 ## Quick Start
+
+### Single values
 
 ```python
 from dataforge import DataForge
 
-# Initialize with optional locale and seed
 forge = DataForge(locale="en_US", seed=42)
 
-# Generate single items
-forge.person.first_name()         # "James"
-forge.internet.email()            # "james.smith@gmail.com"
-forge.address.city()              # "Chicago"
-forge.finance.price()             # "49.99"
-forge.llm.model_name()            # "gpt-4o"
+forge.person.first_name()     # "James"
+forge.internet.email()        # "james.smith@gmail.com"
+forge.address.city()          # "Chicago"
+forge.finance.price()         # "49.99"
+forge.llm.model_name()        # "gpt-4o"
+```
 
-# Generate batches (returns lists)
+### Batch generation
+
+Every method accepts `count=N` and returns a list:
+
+```python
 names  = forge.person.first_name(count=1000)
 emails = forge.internet.email(count=1000)
 cities = forge.address.city(count=1000)
+```
 
-# Reproducible output
+### Reproducible output
+
+```python
 forge_a = DataForge(seed=42)
 forge_b = DataForge(seed=42)
 assert forge_a.person.first_name() == forge_b.person.first_name()
 ```
 
-## Providers
+### Migrating from Faker
 
-DataForge ships with 27 providers organized by domain. Every method accepts `count=N` for batch generation.
-
-### `person` — Names and identity
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `first_name()` | `str` | `"James"` |
-| `last_name()` | `str` | `"Smith"` |
-| `full_name()` | `str` | `"James Smith"` |
-| `male_first_name()` | `str` | `"Robert"` |
-| `female_first_name()` | `str` | `"Jennifer"` |
-| `prefix()` | `str` | `"Mr."` |
-| `suffix()` | `str` | `"Jr."` |
-
-### `address` — Locations and geography
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `street_name()` | `str` | `"Elm Street"` |
-| `street_address()` | `str` | `"742 Elm Street"` |
-| `building_number()` | `str` | `"742"` |
-| `city()` | `str` | `"Chicago"` |
-| `state()` | `str` | `"California"` |
-| `zip_code()` | `str` | `"90210"` |
-| `full_address()` | `str` | `"742 Elm St, Chicago, IL 90210"` |
-| `country()` | `str` | `"United States"` |
-| `country_code()` | `str` | `"US"` |
-| `latitude()` | `str` | `"41.8781"` |
-| `longitude()` | `str` | `"-87.6298"` |
-| `coordinate()` | `tuple[str, str]` | `("41.8781", "-87.6298")` |
-
-### `internet` — Web and network identifiers
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `email()` | `str` | `"james.smith@gmail.com"` |
-| `safe_email()` | `str` | `"james@example.com"` |
-| `username()` | `str` | `"jsmith42"` |
-| `domain()` | `str` | `"example.com"` |
-| `url()` | `str` | `"https://example.com"` |
-| `ipv4()` | `str` | `"192.168.1.1"` |
-| `slug()` | `str` | `"lorem-ipsum-dolor"` |
-| `tld()` | `str` | `"com"` |
-
-### `company` — Business data
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `company_name()` | `str` | `"Acme Corp"` |
-| `company_suffix()` | `str` | `"LLC"` |
-| `job_title()` | `str` | `"Software Engineer"` |
-| `catch_phrase()` | `str` | `"Innovative solutions"` |
-
-### `phone` — Phone numbers
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `phone_number()` | `str` | `"(555) 123-4567"` |
-| `cell_phone()` | `str` | `"555-987-6543"` |
-
-### `finance` — Financial data
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `credit_card_number()` | `str` | `"4532015112830366"` |
-| `credit_card()` | `dict` | `{"type": "Visa", ...}` |
-| `card_type()` | `str` | `"Visa"` |
-| `iban()` | `str` | `"DE89370400440532013000"` |
-| `bic()` | `str` | `"DEUTDEFFXXX"` |
-| `routing_number()` | `str` | `"021000021"` |
-| `bitcoin_address()` | `str` | `"1A1zP1eP5QGefi2DMPTfTL..."` |
-| `currency_code()` | `str` | `"USD"` |
-| `currency_name()` | `str` | `"US Dollar"` |
-| `currency_symbol()` | `str` | `"$"` |
-| `price(min_val, max_val)` | `str` | `"49.99"` |
-
-### `dt` — Dates and times
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `date(start, end, fmt)` | `str` | `"2024-03-15"` |
-| `time(fmt)` | `str` | `"14:30:00"` |
-| `datetime(start, end, fmt)` | `str` | `"2024-03-15 14:30:00"` |
-| `date_of_birth(min_age, max_age)` | `str` | `"1990-05-12"` |
-| `date_object()` | `date` | `date(2024, 3, 15)` |
-| `datetime_object()` | `datetime` | `datetime(2024, 3, 15, ...)` |
-| `timezone()` | `str` | `"US/Eastern"` |
-| `unix_timestamp(start, end)` | `int` | `1710504600` |
+Change one import. Keep your existing code:
 
 ```python
-import datetime
-forge.dt.date(start=datetime.date(2020, 1, 1), end=datetime.date(2024, 12, 31))
+# Before
+# from faker import Faker
+
+# After — same API, ~360x faster
+from dataforge.compat import Faker
+
+fake = Faker(locale="en_US", seed=42)
+fake.name()     # "James Smith"
+fake.email()    # "james.smith@gmail.com"
+fake.address()  # "4821 Oak Ave, Chicago, IL 60614"
 ```
 
-### `color` — Color values
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `color_name()` | `str` | `"Red"` |
-| `hex_color()` | `str` | `"#ff5733"` |
-| `rgb()` | `tuple[int, int, int]` | `(255, 87, 51)` |
-| `rgba()` | `tuple[int, int, int, float]` | `(255, 87, 51, 0.8)` |
-| `rgb_string()` | `str` | `"rgb(255, 87, 51)"` |
-| `hsl()` | `tuple[int, int, int]` | `(11, 100, 60)` |
-| `hsl_string()` | `str` | `"hsl(11, 100%, 60%)"` |
-
-### `file` — File system data
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `file_name()` | `str` | `"report.pdf"` |
-| `file_extension()` | `str` | `"pdf"` |
-| `file_path()` | `str` | `"/home/user/report.pdf"` |
-| `file_category()` | `str` | `"document"` |
-| `mime_type()` | `str` | `"application/pdf"` |
-
-### `network` — Networking and protocols
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `ipv6()` | `str` | `"2001:0db8:85a3:0000:..."` |
-| `mac_address()` | `str` | `"a1:b2:c3:d4:e5:f6"` |
-| `port()` | `int` | `8080` |
-| `hostname()` | `str` | `"server-01.example.com"` |
-| `user_agent()` | `str` | `"Mozilla/5.0 ..."` |
-| `http_method()` | `str` | `"GET"` |
-| `http_status_code()` | `str` | `"200 OK"` |
-
-### `lorem` — Placeholder text
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `word()` | `str` | `"lorem"` |
-| `sentence(word_count)` | `str` | `"Lorem ipsum dolor sit."` |
-| `paragraph(sentence_count)` | `str` | `"Lorem ipsum dolor ..."` |
-| `text(max_chars)` | `str` | `"Lorem ipsum ..."` |
-
-### `barcode` — Barcodes and ISBNs
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `ean13()` | `str` | `"5901234123457"` |
-| `ean8()` | `str` | `"96385074"` |
-| `isbn13()` | `str` | `"9780306406157"` |
-| `isbn10()` | `str` | `"0306406152"` |
-
-All barcodes include valid check digits.
-
-### `misc` — Utilities
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `uuid4()` | `str` | `"550e8400-e29b-41d4-..."` |
-| `uuid7()` | `str` | `"01912b4c-..."` |
-| `boolean(probability)` | `bool` | `True` |
-| `random_element(elements)` | `Any` | `"a"` |
-| `null_or(value, probability)` | `Any` | `None` or value |
-
-### `automotive` — Vehicle data
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `license_plate()` | `str` | `"ABC-1234"` |
-| `vin()` | `str` | `"1HGCM82633A004352"` |
-| `vehicle_make()` | `str` | `"Toyota"` |
-| `vehicle_model()` | `str` | `"Camry"` |
-| `vehicle_year()` | `int` | `2023` |
-| `vehicle_year_str()` | `str` | `"2023"` |
-| `vehicle_color()` | `str` | `"Silver"` |
-
-### `crypto` — Hash digests
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `md5()` | `str` | `"d41d8cd98f00b204e98..."` |
-| `sha1()` | `str` | `"da39a3ee5e6b4b0d325..."` |
-| `sha256()` | `str` | `"e3b0c44298fc1c149af..."` |
-
-### `ecommerce` — E-commerce data
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `product_name()` | `str` | `"Wireless Mouse"` |
-| `product_category()` | `str` | `"Electronics"` |
-| `sku()` | `str` | `"SKU-A1B2C3"` |
-| `price_with_currency()` | `str` | `"$49.99 USD"` |
-| `review_rating()` | `int` | `4` |
-| `review_title()` | `str` | `"Great product!"` |
-| `tracking_number()` | `str` | `"1Z999AA10123456784"` |
-| `order_id()` | `str` | `"ORD-20240315-A1B2"` |
-
-### `education` — Academic data
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `university()` | `str` | `"MIT"` |
-| `degree()` | `str` | `"Bachelor of Science"` |
-| `field_of_study()` | `str` | `"Computer Science"` |
-
-### `geo` — Geographic features
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `continent()` | `str` | `"North America"` |
-| `ocean()` | `str` | `"Pacific Ocean"` |
-| `sea()` | `str` | `"Mediterranean Sea"` |
-| `mountain_range()` | `str` | `"Rocky Mountains"` |
-| `river()` | `str` | `"Amazon"` |
-| `compass_direction()` | `str` | `"Northeast"` |
-| `geo_coordinate()` | `str` | `"41.8781, -87.6298"` |
-| `dms_latitude()` | `str` | `"41°52'41.2\"N"` |
-| `dms_longitude()` | `str` | `"87°37'47.3\"W"` |
-| `geo_hash()` | `str` | `"dp3wjztvh"` |
-
-### `government` — Government IDs
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `ssn()` | `str` | `"123-45-6789"` |
-| `tax_id()` | `str` | `"12-3456789"` |
-| `passport_number()` | `str` | `"A12345678"` |
-| `drivers_license()` | `str` | `"D123-4567-8901"` |
-| `national_id()` | `str` | `"123456789012"` |
-
-### `medical` — Healthcare data
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `blood_type()` | `str` | `"O+"` |
-| `realistic_blood_type()` | `str` | `"O+"` (weighted) |
-| `icd10_code()` | `str` | `"J06.9"` |
-| `drug_name()` | `str` | `"Amoxicillin"` |
-| `drug_form()` | `str` | `"Tablet"` |
-| `dosage()` | `str` | `"500mg"` |
-| `diagnosis()` | `str` | `"Acute bronchitis"` |
-| `procedure()` | `str` | `"Appendectomy"` |
-| `medical_record_number()` | `str` | `"MRN-12345678"` |
-
-`realistic_blood_type()` uses American Red Cross population distribution weights.
-
-### `payment` — Payment and transaction data
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `card_type()` | `str` | `"Visa"` |
-| `payment_method()` | `str` | `"Credit Card"` |
-| `payment_processor()` | `str` | `"Stripe"` |
-| `transaction_status()` | `str` | `"completed"` |
-| `transaction_id()` | `str` | `"txn_1a2b3c4d5e"` |
-| `currency_code()` | `str` | `"USD"` |
-| `currency_symbol()` | `str` | `"$"` |
-| `payment_amount()` | `str` | `"149.99"` |
-| `cvv()` | `str` | `"123"` |
-| `expiry_date()` | `str` | `"12/28"` |
-
-### `profile` — Coherent user profiles
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `profile()` | `dict` | `{"first_name": "James", ...}` |
-| `profile_first_name()` | `str` | `"James"` |
-| `profile_last_name()` | `str` | `"Smith"` |
-| `profile_email()` | `str` | `"james.smith@gmail.com"` |
-| `profile_phone()` | `str` | `"(555) 123-4567"` |
-| `profile_city()` | `str` | `"Chicago"` |
-| `profile_state()` | `str` | `"Illinois"` |
-| `profile_zip_code()` | `str` | `"60601"` |
-| `profile_job_title()` | `str` | `"Software Engineer"` |
-
-`profile()` returns a coherent dict combining person, internet, address, phone, and company data.
-
-### `science` — Scientific data
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `chemical_element()` | `str` | `"Hydrogen"` |
-| `element_symbol()` | `str` | `"H"` |
-| `si_unit()` | `str` | `"meter"` |
-| `planet()` | `str` | `"Mars"` |
-| `galaxy()` | `str` | `"Milky Way"` |
-| `constellation()` | `str` | `"Orion"` |
-| `scientific_discipline()` | `str` | `"Physics"` |
-| `metric_prefix()` | `str` | `"kilo"` |
-
-### `text` — Rich text content
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `quote()` | `str` | `"The only way to do great work..."` |
-| `headline()` | `str` | `"Breaking: New Study Reveals..."` |
-| `buzzword()` | `str` | `"synergy"` |
-| `paragraph()` | `str` | Multi-sentence paragraph |
-| `text_block()` | `str` | Multi-paragraph text block |
-
-### `ai_prompt` — AI prompts
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `user_prompt()` | `str` | `"Explain quantum computing..."` |
-| `coding_prompt()` | `str` | `"Write a Python function..."` |
-| `creative_prompt()` | `str` | `"Write a short story about..."` |
-| `analysis_prompt()` | `str` | `"Analyze the following data..."` |
-| `system_prompt()` | `str` | `"You are a helpful assistant..."` |
-| `persona_prompt()` | `str` | `"Act as a senior engineer..."` |
-| `prompt_template()` | `str` | `"Given {context}, answer {question}"` |
-| `few_shot_prompt()` | `str` | Multi-example prompt |
-
-### `llm` — LLM ecosystem data
-
-**Models and metadata:**
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `model_name()` | `str` | `"gpt-4o"` |
-| `provider_name()` | `str` | `"OpenAI"` |
-| `api_key()` | `str` | `"sk-proj-a1b2c3d4..."` |
-| `finish_reason()` | `str` | `"stop"` |
-| `stop_sequence()` | `str` | `"<\|endoftext\|>"` |
-
-**Agents and tool use:**
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `tool_name()` | `str` | `"web_search"` |
-| `tool_call_id()` | `str` | `"call_abc123"` |
-| `mcp_server_name()` | `str` | `"filesystem"` |
-| `agent_name()` | `str` | `"research-agent"` |
-| `capability()` | `str` | `"code_generation"` |
-
-**RAG and embeddings:**
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `embedding_model()` | `str` | `"text-embedding-3-small"` |
-| `vector_db_name()` | `str` | `"Pinecone"` |
-| `chunk_id()` | `str` | `"chunk_a1b2c3d4"` |
-| `similarity_score()` | `str` | `"0.9234"` |
-| `namespace()` | `str` | `"production"` |
-
-**Content moderation:**
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `moderation_category()` | `str` | `"hate"` |
-| `moderation_score()` | `str` | `"0.0012"` |
-| `harm_label()` | `str` | `"safe"` |
-
-**Usage and billing:**
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `token_count()` | `str` | `"1234"` |
-| `prompt_tokens()` | `str` | `"256"` |
-| `completion_tokens()` | `str` | `"512"` |
-| `cost_estimate()` | `str` | `"$0.0042"` |
-| `rate_limit_header()` | `str` | `"x-ratelimit-remaining: 42"` |
-
-### `ai_chat` — AI conversation data
-
-| Method | Return | Example |
-|--------|--------|---------|
-| `chat_message()` | `dict` | `{"role": "user", "content": "...", ...}` |
-| `chat_role()` | `str` | `"user"` |
-| `chat_model()` | `str` | `"gpt-4o"` |
-| `chat_content()` | `str` | `"Explain quantum computing..."` |
-| `chat_tokens()` | `str` | `"256"` |
-| `chat_finish_reason()` | `str` | `"stop"` |
-
-`chat_message()` returns a coherent dict combining role, model, content, tokens, and finish\_reason.
+57 Faker methods are mapped. Unknown methods fall back to alias lookup, then direct field matching.
 
 ---
 
 ## Schema API
 
-The `Schema` API provides reusable blueprints for structured data generation. Field lookups are pre-resolved at creation time for maximum throughput.
+Define reusable blueprints for structured data generation:
 
 ```python
-from dataforge import DataForge
-
-forge = DataForge(seed=42)
-
-# List of field names (auto-resolved to provider methods)
-schema = forge.schema(["first_name", "last_name", "email", "city"])
-
-# Dict with custom column names
 schema = forge.schema({
     "Name": "person.full_name",
     "Email": "internet.email",
@@ -548,27 +108,13 @@ schema = forge.schema({
     "Price": "finance.price",
 })
 
-# Generate rows
-rows = schema.generate(1000)   # list[dict[str, str]]
-
-# Stream rows lazily (memory-efficient)
-for row in schema.stream(1_000_000):
-    process(row)
-
-# Async streaming
-async for row in schema.async_stream(1_000_000):
-    await process(row)
-
-# Export directly
-csv_str  = schema.to_csv(count=5000)
-jsonl_str = schema.to_jsonl(count=5000)
-sql_str  = schema.to_sql(count=5000, table="users")
-df       = schema.to_dataframe(count=5000)  # requires pandas
+rows = schema.generate(1000)        # list[dict]
+csv_str = schema.to_csv(count=5000)
+sql_str = schema.to_sql(count=5000, table="users")
+df = schema.to_dataframe(count=5000)  # requires pandas
 ```
 
-### Row-dependent fields (correlated data)
-
-Schema supports callable values for fields that depend on other columns:
+Row-dependent fields for correlated data:
 
 ```python
 schema = forge.schema({
@@ -577,279 +123,339 @@ schema = forge.schema({
 })
 ```
 
-Callables receive the current row dict and execute after batch columns are generated.
+---
 
 ## Bulk Export
 
-Generate datasets directly from the `DataForge` instance:
-
 ```python
-# List of dictionaries
-rows = forge.to_dict(
-    fields=["first_name", "last_name", "email", "company.job_title"],
-    count=100
-)
+# List of dicts
+rows = forge.to_dict(fields=["first_name", "email"], count=100)
 
-# CSV (returns string, optionally writes to file)
-csv_data = forge.to_csv(
-    fields={"Name": "person.full_name", "Email": "internet.email"},
-    count=5000,
-    path="users.csv"
-)
+# CSV
+forge.to_csv(fields={"Name": "person.full_name"}, count=5000, path="users.csv")
 
-# JSONL (returns string, optionally writes to file)
-jsonl_data = forge.to_jsonl(
-    fields=["first_name", "email", "city"],
-    count=1000,
-    path="users.jsonl"
-)
+# JSONL
+forge.to_jsonl(fields=["first_name", "email"], count=1000, path="users.jsonl")
 
 # SQL INSERT statements
-sql_data = forge.to_sql(
-    fields=["first_name", "last_name", "email"],
-    count=500,
-    table="users",
-    dialect="postgresql"  # "sqlite" (default), "mysql", or "postgresql"
-)
+forge.to_sql(fields=["first_name", "email"], count=500, table="users", dialect="postgresql")
 
-# Pandas DataFrame (requires pandas)
-df = forge.to_dataframe(
-    fields=["date", "finance.price", "address.state"],
-    count=10_000
-)
+# Pandas / PyArrow / Polars / Parquet (requires optional deps)
+df = forge.to_dataframe(fields=["first_name"], count=10_000)
+table = forge.to_arrow(fields=["first_name"], count=1_000_000)
+df = forge.to_polars(fields=["first_name"], count=1_000_000)
+forge.to_parquet(fields=["first_name"], path="out.parquet", count=1_000_000)
 ```
 
-## Streaming Export
+### Streaming Export
 
-For arbitrarily large datasets that don't fit in memory:
+For datasets that don't fit in memory:
 
 ```python
-# Stream to CSV file in batches
-rows_written = forge.stream_to_csv(
-    fields=["first_name", "email", "city"],
-    path="users.csv",
-    count=10_000_000,
-    batch_size=100_000
-)
-
-# Stream to JSONL file in batches
-rows_written = forge.stream_to_jsonl(
-    fields=["first_name", "email", "city"],
-    path="users.jsonl",
-    count=10_000_000,
-    batch_size=100_000
-)
+forge.stream_to_csv(fields=["first_name", "email"], path="users.csv", count=10_000_000)
+forge.stream_to_jsonl(fields=["first_name", "email"], path="users.jsonl", count=10_000_000)
 ```
 
-Batch size is auto-tuned when not specified.
+---
 
-## Integrations
+## CLI
 
-### PyArrow
-
-```python
-# PyArrow Table
-table = forge.to_arrow(
-    fields=["first_name", "email", "city"],
-    count=1_000_000
-)
-
-# Write Parquet file
-rows_written = forge.to_parquet(
-    fields=["first_name", "email", "city"],
-    path="users.parquet",
-    count=1_000_000
-)
-```
-
-All columns are typed as `pa.string()`. Large datasets are generated in batches with bounded memory.
-
-### Polars
-
-```python
-# Polars DataFrame
-df = forge.to_polars(
-    fields=["first_name", "email", "city"],
-    count=1_000_000
-)
-```
-
-All columns are typed as `pl.Utf8`. Large datasets use `pl.concat()` for efficient multi-batch assembly.
-
-### Pydantic
-
-Auto-generate schemas from Pydantic models:
-
-```python
-from pydantic import BaseModel
-
-class User(BaseModel):
-    first_name: str
-    last_name: str
-    email: str
-    city: str
-
-schema = forge.schema_from_pydantic(User)
-rows = schema.generate(1000)  # list[dict] with keys matching model fields
-```
-
-Field names are matched to DataForge providers via direct name lookup and heuristic alias mapping (~70 common field names). Supports both Pydantic v1 and v2.
-
-### SQLAlchemy
-
-Auto-generate schemas from SQLAlchemy models:
-
-```python
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-
-class Base(DeclarativeBase):
-    pass
-
-class User(Base):
-    __tablename__ = "users"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    first_name: Mapped[str]
-    last_name: Mapped[str]
-    email: Mapped[str]
-
-schema = forge.schema_from_sqlalchemy(User)
-rows = schema.generate(1000)  # primary key 'id' is auto-skipped
-```
-
-## Command Line Interface
-
-DataForge includes a CLI for generating data directly from the terminal.
+Generate data from the terminal — no Python required:
 
 ```bash
-# Generate 10 rows of CSV
 dataforge --count 10 --format csv first_name last_name email
-
-# Generate JSON output
-dataforge -n 5 -f json company_name url city
-
-# Generate JSONL
-dataforge -n 100 -f jsonl first_name email city
-
-# Write to file
-dataforge -n 1000 -f csv -o users.csv first_name last_name email
-
-# Use a specific locale and seed
+dataforge -n 100 -f jsonl -o users.jsonl first_name email city
 dataforge --locale fr_FR --seed 42 -n 5 first_name city
-
-# Omit headers
-dataforge -n 10 -f csv --no-header first_name email
-
-# List all available fields
 dataforge --list-fields
 ```
-
-### CLI Options
 
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--count N` | `-n` | Number of rows (default: 10) |
-| `--format FMT` | `-f` | Output format: `text`, `csv`, `json`, `jsonl` |
+| `--format FMT` | `-f` | `text`, `csv`, `json`, `jsonl` |
 | `--locale LOC` | `-l` | Locale code (default: `en_US`) |
-| `--seed S` | `-s` | Random seed for reproducibility |
-| `--output PATH` | `-o` | Write to file instead of stdout |
-| `--no-header` | | Omit header row in text/csv output |
-| `--list-fields` | | List all available field names |
+| `--seed S` | `-s` | Random seed |
+| `--output PATH` | `-o` | Write to file |
+| `--no-header` | | Omit header row |
+| `--list-fields` | | List all available fields |
 
-Default fields (when none specified): `first_name`, `last_name`, `email`.
+---
 
 ## Pytest Plugin
 
-DataForge auto-registers as a pytest plugin via the `pytest11` entry point.
-
-### Fixtures
-
-| Fixture | Description |
-|---------|-------------|
-| `forge` | Seeded `DataForge` instance (deterministic) |
-| `fake` | Alias for `forge` |
-| `forge_unseeded` | Unseeded `DataForge` instance (non-deterministic) |
-
-### Seed priority
-
-1. `@pytest.mark.forge_seed(N)` marker (per-test)
-2. `--forge-seed N` CLI option (session-wide)
-3. Default: `0`
-
-### Usage
+Auto-registers via `pytest11` entry point. Three fixtures, zero config:
 
 ```python
 def test_name(forge):
-    name = forge.person.first_name()
-    assert isinstance(name, str)
+    assert isinstance(forge.person.first_name(), str)
 
-def test_email(fake):
+def test_email(fake):  # alias for forge
     assert "@" in fake.internet.email()
 
 @pytest.mark.forge_seed(42)
-def test_specific(forge):
+def test_deterministic(forge):
     assert forge.person.first_name() == "James"
-
-def test_random(forge_unseeded):
-    name = forge_unseeded.person.first_name()
-    assert len(name) > 0
 ```
 
 ```bash
-# Run tests with a specific seed
-pytest --forge-seed 42
+pytest --forge-seed 42  # session-wide seed
 ```
 
-## Unique Values
+---
 
-Generate guaranteed-unique values using the `forge.unique` proxy:
+## 27 Providers, 198 Methods
 
-```python
-# Single unique values
-name1 = forge.unique.person.first_name()
-name2 = forge.unique.person.first_name()
-assert name1 != name2
+Every method accepts `count=N` for batch generation.
 
-# Unique batches
-names = forge.unique.person.first_name(count=100)
-assert len(names) == len(set(names))
+<details>
+<summary><strong>person, address, internet, company, phone, finance, datetime</strong> — Core providers</summary>
 
-# Clear tracking to reuse values
-forge.unique.clear()                     # clear all providers
-forge.unique.clear("person")             # clear specific provider
-forge.unique.person.first_name.clear()   # clear specific method
-```
+### `person`
 
-The unique system uses a three-layer proxy architecture:
+| Method | Example |
+|--------|---------|
+| `first_name()` | `"James"` |
+| `last_name()` | `"Smith"` |
+| `full_name()` | `"James Smith"` |
+| `male_first_name()` | `"Robert"` |
+| `female_first_name()` | `"Jennifer"` |
+| `prefix()` | `"Mr."` |
+| `suffix()` | `"Jr."` |
 
-1. `forge.unique` — `UniqueProxy` wrapping the forge instance
-2. `forge.unique.person` — `_UniqueProviderProxy` wrapping the provider
-3. `forge.unique.person.first_name` — `_UniqueMethodWrapper` with set-based dedup
+### `address`
 
-Batch generation uses **adaptive over-sampling** that starts at 20% extra per round and dynamically increases based on the observed collision rate, minimizing retry passes even at high saturation. Raises `RuntimeError` if uniqueness cannot be satisfied after extensive retries.
+| Method | Example |
+|--------|---------|
+| `street_name()` | `"Elm Street"` |
+| `street_address()` | `"742 Elm Street"` |
+| `city()` | `"Chicago"` |
+| `state()` | `"California"` |
+| `zip_code()` | `"90210"` |
+| `full_address()` | `"742 Elm St, Chicago, IL 90210"` |
+| `country()` | `"United States"` |
+| `country_code()` | `"US"` |
+| `latitude()` / `longitude()` | `"41.8781"` / `"-87.6298"` |
 
-## Locales
+### `internet`
 
-DataForge supports 17 locales with locale-specific person names, addresses, companies, phone numbers, and internet domains:
+| Method | Example |
+|--------|---------|
+| `email()` | `"james.smith@gmail.com"` |
+| `safe_email()` | `"james@example.com"` |
+| `username()` | `"jsmith42"` |
+| `domain()` | `"example.com"` |
+| `url()` | `"https://example.com"` |
+| `ipv4()` | `"192.168.1.1"` |
+| `slug()` | `"lorem-ipsum-dolor"` |
 
-| Locale | Language | Region |
-|--------|----------|--------|
-| `en_US` | English | United States |
-| `en_GB` | English | United Kingdom |
-| `en_AU` | English | Australia |
-| `en_CA` | English | Canada |
-| `de_DE` | German | Germany |
-| `fr_FR` | French | France |
-| `es_ES` | Spanish | Spain |
-| `it_IT` | Italian | Italy |
-| `pt_BR` | Portuguese | Brazil |
-| `nl_NL` | Dutch | Netherlands |
-| `pl_PL` | Polish | Poland |
-| `ru_RU` | Russian (romanized) | Russia |
-| `ar_SA` | Arabic (romanized) | Saudi Arabia |
-| `hi_IN` | Hindi (romanized) | India |
-| `ja_JP` | Japanese | Japan |
-| `ko_KR` | Korean | South Korea |
-| `zh_CN` | Chinese | China |
+### `company`
+
+| Method | Example |
+|--------|---------|
+| `company_name()` | `"Acme Corp"` |
+| `job_title()` | `"Software Engineer"` |
+| `catch_phrase()` | `"Innovative solutions"` |
+
+### `phone`
+
+| Method | Example |
+|--------|---------|
+| `phone_number()` | `"(555) 123-4567"` |
+| `cell_phone()` | `"555-987-6543"` |
+
+### `finance`
+
+| Method | Example |
+|--------|---------|
+| `credit_card_number()` | `"4532015112830366"` |
+| `iban()` | `"DE89370400440532013000"` |
+| `bic()` | `"DEUTDEFFXXX"` |
+| `price(min_val, max_val)` | `"49.99"` |
+| `currency_code()` | `"USD"` |
+| `bitcoin_address()` | `"1A1zP1eP5QGefi2DMPTfTL..."` |
+
+### `dt` (datetime)
+
+| Method | Example |
+|--------|---------|
+| `date(start, end, fmt)` | `"2024-03-15"` |
+| `datetime(start, end, fmt)` | `"2024-03-15 14:30:00"` |
+| `date_of_birth(min_age, max_age)` | `"1990-05-12"` |
+| `timezone()` | `"US/Eastern"` |
+| `unix_timestamp(start, end)` | `1710504600` |
+
+</details>
+
+<details>
+<summary><strong>color, file, network, lorem, barcode, misc</strong> — Utility providers</summary>
+
+### `color`
+
+| Method | Example |
+|--------|---------|
+| `color_name()` | `"red"` |
+| `hex_color()` | `"#ff5733"` |
+| `rgb_color()` | `"rgb(255, 87, 51)"` |
+
+### `file`
+
+| Method | Example |
+|--------|---------|
+| `file_name()` | `"report.pdf"` |
+| `file_extension()` | `"pdf"` |
+| `mime_type()` | `"application/pdf"` |
+
+### `network`
+
+| Method | Example |
+|--------|---------|
+| `mac_address()` | `"00:1B:44:11:3A:B7"` |
+| `user_agent()` | `"Mozilla/5.0 ..."` |
+| `port()` | `8080` |
+
+### `lorem`
+
+| Method | Example |
+|--------|---------|
+| `word()` | `"lorem"` |
+| `sentence()` | `"Lorem ipsum dolor sit amet."` |
+| `paragraph()` | `"Lorem ipsum dolor sit amet, ..."` |
+| `text()` | Multi-paragraph string |
+
+### `barcode`
+
+| Method | Example |
+|--------|---------|
+| `ean13()` | `"5901234123457"` |
+| `ean8()` | `"96385074"` |
+| `upc_a()` | `"012345678905"` |
+
+### `misc`
+
+| Method | Example |
+|--------|---------|
+| `boolean()` | `True` |
+| `uuid4()` | `"f47ac10b-58cc-..."` |
+| `md5()` / `sha1()` / `sha256()` | Hex digest strings |
+| `password()` | `"aB3$xK9p"` |
+
+</details>
+
+<details>
+<summary><strong>automotive, crypto, ecommerce, education, geo, government, medical, payment, profile, science, text</strong> — Domain providers</summary>
+
+### `automotive`
+
+| Method | Example |
+|--------|---------|
+| `vin()` | `"1HGBH41JXMN109186"` |
+| `license_plate()` | `"ABC-1234"` |
+
+### `crypto`
+
+| Method | Example |
+|--------|---------|
+| `bitcoin_address()` | `"1A1zP1eP5QGefi2..."` |
+| `ethereum_address()` | `"0x742d35Cc6634C0532925a3b8D..."` |
+
+### `ecommerce`
+
+| Method | Example |
+|--------|---------|
+| `product_name()` | `"Wireless Bluetooth Headphones"` |
+| `category()` | `"Electronics"` |
+| `sku()` | `"ELC-2847-BLK"` |
+
+### `education`
+
+| Method | Example |
+|--------|---------|
+| `university()` | `"MIT"` |
+| `degree()` | `"Bachelor of Science"` |
+| `course_name()` | `"Introduction to Computer Science"` |
+
+### `geo`
+
+| Method | Example |
+|--------|---------|
+| `continent()` | `"North America"` |
+| `timezone_name()` | `"America/Chicago"` |
+
+### `government`
+
+| Method | Example |
+|--------|---------|
+| `ssn()` | `"123-45-6789"` |
+| `passport_number()` | `"X1234567"` |
+
+### `medical`
+
+| Method | Example |
+|--------|---------|
+| `blood_type()` | `"O+"` |
+| `diagnosis()` | `"Hypertension"` |
+| `medication()` | `"Lisinopril"` |
+
+### `payment`
+
+| Method | Example |
+|--------|---------|
+| `credit_card()` | `{"type": "Visa", "number": "...", ...}` |
+| `card_type()` | `"Visa"` |
+
+### `profile`
+
+| Method | Example |
+|--------|---------|
+| `profile()` | Full profile dict |
+| `simple_profile()` | Simplified profile dict |
+
+### `science`
+
+| Method | Example |
+|--------|---------|
+| `chemical_element()` | `"Carbon"` |
+| `scientist()` | `"Marie Curie"` |
+
+### `text`
+
+| Method | Example |
+|--------|---------|
+| `sentence()` | Contextual sentence |
+| `paragraph()` | Contextual paragraph |
+
+</details>
+
+<details>
+<summary><strong>ai_prompt, llm, ai_chat</strong> — AI/LLM providers</summary>
+
+### `ai_prompt`
+
+| Method | Example |
+|--------|---------|
+| `system_prompt()` | `"You are a helpful assistant..."` |
+| `user_prompt()` | `"Explain quantum computing..."` |
+
+### `llm`
+
+| Method | Example |
+|--------|---------|
+| `model_name()` | `"gpt-4o"` |
+| `provider()` | `"OpenAI"` |
+| `token_count()` | `1024` |
+
+### `ai_chat`
+
+| Method | Example |
+|--------|---------|
+| `conversation()` | Multi-turn chat dict |
+| `message()` | Single chat message dict |
+
+</details>
+
+---
+
+## 17 Locales
 
 ```python
 forge = DataForge(locale="fr_FR")
@@ -860,1320 +466,406 @@ forge = DataForge(locale="ja_JP")
 forge.person.full_name()  # "田中太郎"
 ```
 
----
+| | | | |
+|---|---|---|---|
+| `en_US` | `en_GB` | `en_AU` | `en_CA` |
+| `de_DE` | `fr_FR` | `es_ES` | `it_IT` |
+| `pt_BR` | `nl_NL` | `pl_PL` | `ru_RU` |
+| `ar_SA` | `hi_IN` | `ja_JP` | `ko_KR` |
+| `zh_CN` | | | |
 
-## Faker Compatibility Layer
-
-Drop-in replacement for the `faker` library. Provides the same `Faker` class API so you can migrate existing code by changing a single import — while gaining DataForge's performance.
-
-```python
-# Before (faker)
-# from faker import Faker
-
-# After (dataforge — same API, faster)
-from dataforge.compat import Faker
-
-fake = Faker(locale="en_US", seed=42)
-
-fake.name()           # "James Smith"
-fake.email()          # "james.smith@gmail.com"
-fake.address()        # "4821 Oak Ave, Chicago, IL 60614"
-fake.company()        # "Acme Corp"
-fake.phone_number()   # "(555) 123-4567"
-fake.date()           # "2024-03-15"
-fake.text()           # "Lorem ipsum dolor sit amet..."
-```
-
-### Supported Methods
-
-The compatibility layer maps 57 Faker method names to DataForge fields. A few common mappings:
-
-| Faker method | DataForge field |
-|-------------|-----------------|
-| `name()` | `full_name` |
-| `first_name()` | `first_name` |
-| `last_name()` | `last_name` |
-| `email()` | `email` |
-| `address()` | `full_address` |
-| `company()` | `company_name` |
-| `phone_number()` | `phone_number` |
-| `date()` | `date` |
-| `city()` | `city` |
-| `state()` | `state` |
-| `zipcode()` | `zip_code` |
-| `url()` | `url` |
-| `ipv4()` | `ipv4` |
-| `uuid4()` | `uuid4` |
-| `ssn()` | `ssn` |
-| `credit_card_number()` | `credit_card_number` |
-
-Any method not in the explicit map falls back to DataForge's alias lookup, then to a direct field name match. Resolved methods are cached for subsequent calls.
-
-### Seeding
+Multi-locale mixing:
 
 ```python
-# Global seed (class method)
-Faker.seed(42)
-
-# Instance seed
-fake = Faker(seed=42)
-fake.seed_instance(99)
-
-# Multi-locale
-fake = Faker(["en_US", "fr_FR", "de_DE"])
-fake.name()  # randomly picks a locale per call
+forge = DataForge(locale=["en_US", "fr_FR", "de_DE"])
+forge.person.full_name()  # randomly picks a locale per call
 ```
 
 ---
 
-## Multi-Locale Mixing
-
-Pass a list of locales to blend data from multiple languages in a single forge instance. Each generation call randomly selects one of the configured locales.
+## Unique Values
 
 ```python
-from dataforge import DataForge
+name1 = forge.unique.person.first_name()
+name2 = forge.unique.person.first_name()
+assert name1 != name2
 
-forge = DataForge(locale=["en_US", "fr_FR", "ja_JP"], seed=42)
+names = forge.unique.person.first_name(count=100)
+assert len(names) == len(set(names))
 
-# Each call randomly picks a locale
-forge.person.full_name()  # "James Smith" or "Jean Dupont" or "田中太郎"
-forge.address.city()      # "Chicago" or "Paris" or "東京"
-
-# Check configured locales
-forge.locales  # ("en_US", "fr_FR", "ja_JP")
-forge.locale   # "en_US" (primary)
+forge.unique.clear()  # reset tracking
 ```
 
-### How It Works
-
-- A child `DataForge` instance is created for each locale
-- Each child gets a deterministic sub-seed derived from the parent seed
-- On every provider access, one child is selected at random
-- Seeding is reproducible: the same seed always produces the same locale sequence
-
-### Schema Integration
-
-Multi-locale works seamlessly with the Schema API:
-
-```python
-forge = DataForge(locale=["en_US", "de_DE", "es_ES"], seed=42)
-schema = forge.schema(["first_name", "last_name", "city"])
-rows = schema.generate(100)
-# Rows contain a mix of English, German, and Spanish names and cities
-```
+Uses adaptive over-sampling — starts at 20% extra and scales with collision rate.
 
 ---
 
-## Dynamic Fields (`define()`)
+## Advanced Features
 
-Define custom fields that can be used anywhere a built-in field name is accepted — in schemas, bulk export, and CLI.
-
-```python
-from dataforge import DataForge
-
-forge = DataForge(seed=42)
-
-# From a list of elements (uniform random)
-forge.define("status", elements=["active", "inactive", "pending"])
-forge.status()  # "active"
-
-# With weighted probabilities
-forge.define("priority", elements=["low", "medium", "high"], weights=[0.5, 0.3, 0.2])
-forge.priority()  # "low" (50% of the time)
-
-# From a callable
-forge.define("score", func=lambda: round(random.gauss(75, 10), 1))
-forge.score()  # 78.3
-```
-
-### Batch Generation
-
-Custom fields support `count=N` like built-in fields:
+<details>
+<summary><strong>Dynamic Fields (define())</strong> — Custom data pools and generators</summary>
 
 ```python
-forge.define("tier", elements=["free", "pro", "enterprise"])
-tiers = forge.tier(count=1000)  # list of 1000 random tiers
-```
-
-### Schema Integration
-
-Custom fields are resolved by name in schemas:
-
-```python
-forge.define("status", elements=["active", "inactive", "pending"])
-schema = forge.schema({
-    "Name": "full_name",
-    "Email": "email",
-    "Status": "status",
-})
-rows = schema.generate(100)
-# [{"Name": "James Smith", "Email": "...", "Status": "active"}, ...]
-```
-
----
-
-## Field Transform Pipelines (`pipe()`)
-
-Chain composable post-generation transforms onto any field. The `pipe()` function creates a field spec that first generates data from a provider, then applies one or more transform functions in sequence.
-
-```python
-from dataforge import DataForge
-from dataforge.transforms import pipe, upper, lower, truncate, maybe_null
-
-forge = DataForge(seed=42)
+from dataforge import define
 
 schema = forge.schema({
-    "Username": pipe("username", upper),
-    "Bio": pipe("sentence", truncate(50)),
-    "Email": pipe("email", lower),
-    "Phone": pipe("phone_number", maybe_null(0.2)),
-})
-rows = schema.generate(100)
-# [{"Username": "JSMITH42", "Bio": "Lorem ipsum dolor...", ...}, ...]
-```
-
-### Built-in Transforms
-
-**Case transforms:**
-
-| Transform | Description | Example |
-|-----------|-------------|---------|
-| `upper` | Uppercase | `"hello"` -> `"HELLO"` |
-| `lower` | Lowercase | `"Hello"` -> `"hello"` |
-| `title_case` | Title Case | `"hello world"` -> `"Hello World"` |
-| `snake_case` | snake_case | `"Hello World"` -> `"hello_world"` |
-| `camel_case` | camelCase | `"hello world"` -> `"helloWorld"` |
-| `kebab_case` | kebab-case | `"Hello World"` -> `"hello-world"` |
-
-**String transforms:**
-
-| Transform | Description | Example |
-|-----------|-------------|---------|
-| `truncate(n, suffix="...")` | Truncate to *n* chars | `"Hello World"` -> `"Hello..."` |
-| `strip` | Strip whitespace | `" hello "` -> `"hello"` |
-| `prefix(pre)` | Prepend string | `"world"` -> `"hello_world"` |
-| `suffix(suf)` | Append string | `"hello"` -> `"hello_world"` |
-| `wrap(before, after)` | Wrap with delimiters | `"hi"` -> `"[hi]"` |
-| `replace(old, new)` | String replacement | `"a-b"` -> `"a_b"` |
-
-**Data transforms:**
-
-| Transform | Description |
-|-----------|-------------|
-| `maybe_null(probability)` | Replace with `None` at given rate |
-| `hash_with(algorithm)` | Hash value (SHA-256, MD5, etc.) |
-| `encode_b64` | Base64-encode |
-| `decode_b64` | Base64-decode |
-| `redact(char, keep_start, keep_end)` | Redact middle characters |
-| `apply_if(condition, transform)` | Conditionally apply a transform |
-
-### Chaining Multiple Transforms
-
-Transforms are applied left to right:
-
-```python
-from dataforge.transforms import pipe, lower, prefix, truncate
-
-schema = forge.schema({
-    "slug": pipe("full_name", lower, replace(" ", "-"), truncate(20)),
-})
-# "James Smith" -> "james smith" -> "james-smith" -> "james-smith"
-```
-
-### Custom Transforms
-
-Any `(value) -> value` callable works as a transform:
-
-```python
-schema = forge.schema({
-    "price": pipe("price", lambda v: f"${v}"),
-    "name": pipe("first_name", str.upper),
+    "Status": define(["active", "inactive", "pending"]),
+    "Priority": define(["low", "medium", "high"], weights=[0.5, 0.3, 0.2]),
+    "Score": define(lambda: forge.misc.boolean()),
 })
 ```
 
----
+</details>
 
-## Type-Driven Schema
+<details>
+<summary><strong>Transform Pipelines (pipe())</strong> — Post-generation data transformation</summary>
 
-Auto-generate schemas from Python `@dataclass` and `TypedDict` classes. Field names and type annotations are matched to DataForge providers via a 3-tier resolution: exact registry match, alias heuristic (~90 common field names), then type-based fallback.
+```python
+from dataforge import pipe
 
-### From Dataclasses
+schema = forge.schema({
+    "Username": pipe("internet.username", str.upper),
+    "Bio": pipe("lorem.sentence", lambda s: s[:50]),
+})
+```
+
+</details>
+
+<details>
+<summary><strong>Type-Driven Schema</strong> — Generate from dataclasses and TypedDicts</summary>
 
 ```python
 from dataclasses import dataclass
-from dataforge import DataForge
 
 @dataclass
 class User:
     first_name: str
     last_name: str
     email: str
-    age: int
-    is_active: bool
 
-forge = DataForge(seed=42)
 schema = forge.schema_from_dataclass(User)
-rows = schema.generate(100)
-# [{"first_name": "James", "last_name": "Smith", "email": "...", ...}, ...]
-```
-
-### From TypedDicts
-
-```python
-from typing import TypedDict
-
-class Product(TypedDict):
-    product_name: str
-    sku: str
-    price: float
-    category: str
-
-schema = forge.schema_from_typed_dict(Product)
-rows = schema.generate(100)
-```
-
-### Resolution Order
-
-For each field, DataForge tries:
-
-1. **Exact match** — field name exists in the provider registry (e.g. `email` -> `internet.email`)
-2. **Alias heuristic** — field name appears in `_FIELD_ALIASES` (e.g. `user_email` -> `email`, `zip` -> `zip_code`)
-3. **Type fallback** — Python type maps to a default field (`bool` -> `boolean`, `datetime` -> `datetime`, `UUID` -> `uuid4`)
-
-Fields that cannot be resolved emit a `UserWarning` and are skipped. A `ValueError` is raised if no fields could be mapped at all.
-
----
-
-## Data Contract Validation
-
-Validate that generated or imported data conforms to expected semantic patterns. The validator checks each cell against 14 regex-based semantic validators and enforces non-empty constraints for identity fields.
-
-```python
-from dataforge.validation import validate_records, validate_csv
-
-# Validate in-memory records
-report = validate_records(
-    records=[
-        {"email": "alice@test.com", "name": "Alice"},
-        {"email": "not-an-email", "name": ""},
-    ],
-    field_map={"email": "email", "name": "full_name"},
-)
-
-print(report.is_valid)        # False
-print(report.violation_count)  # 2
-print(report.summary())
-```
-
-### Semantic Validators
-
-The following field types are validated with regex patterns:
-
-| Field | Pattern |
-|-------|---------|
-| `email` | RFC-compliant `user@domain.tld` |
-| `ipv4` | Dotted quad `0-255.0-255.0-255.0-255` |
-| `ipv6` | Hex groups with colons |
-| `url` | `http(s)://...` |
-| `uuid4` | 8-4-4-4-12 hex format |
-| `date` | ISO `YYYY-MM-DD` |
-| `datetime` | ISO `YYYY-MM-DD HH:MM:SS` |
-| `time` | `HH:MM:SS` |
-| `phone_number` | Digit groups with optional delimiters |
-| `zip_code` | 5-digit or 5+4 US zip |
-| `ssn` | `NNN-NN-NNNN` |
-| `mac_address` | Hex pairs with colons |
-| `hex_color` | `#RRGGBB` |
-| `credit_card_number` | 13-19 digits |
-
-### Non-Empty Constraints
-
-Identity fields (`first_name`, `last_name`, `full_name`, `email`, `city`, `state`, `country`, `company_name`, `job_title`, `username`, `domain_name`) must be non-null and non-empty unless listed in `null_fields`.
-
-### CSV Validation
-
-```python
-report = validate_csv(
-    path="users.csv",
-    field_map={"email": "email", "phone": "phone_number"},
-    max_rows=10_000,
-    delimiter=",",
-    encoding="utf-8",
-)
-```
-
-### Schema Integration
-
-Validate data directly from a schema:
-
-```python
-schema = forge.schema({"Email": "email", "Phone": "phone_number"})
 rows = schema.generate(1000)
-report = schema.validate(rows)
-# or validate a CSV file:
-report = schema.validate("users.csv")
 ```
 
-### Violation Reports
+</details>
+
+<details>
+<summary><strong>Data Contract Validation</strong> — Semantic pattern and constraint checking</summary>
 
 ```python
-report = validate_records(records, field_map)
+from dataforge.validation import validate
 
-report.is_valid          # bool — True if no violations
-report.violation_count   # int — total number of violations
-report.total_rows        # int — rows checked
-report.total_columns     # int — columns checked
-
-# Group by column
-by_col = report.violations_by_column()
-# {"email": [Violation(row=1, column="email", ...), ...]}
-
-# Human-readable summary (up to 5 violations per column)
-print(report.summary())
+errors = validate(rows, {
+    "email": {"pattern": r"^[^@]+@[^@]+\.[^@]+$"},
+    "name": {"non_empty": True},
+})
 ```
 
----
+</details>
 
-## Hypothesis Strategy Bridge
-
-Integrate DataForge fields into [Hypothesis](https://hypothesis.readthedocs.io/) property-based tests. Requires `pip install hypothesis`.
+<details>
+<summary><strong>Hypothesis Strategy Bridge</strong> — Property-based testing integration</summary>
 
 ```python
-from dataforge.compat.hypothesis import strategy, forge_strategy
+from dataforge.hypothesis import strategy
 
-# Single-field strategy
-@given(email=strategy("email"))
-def test_emails_contain_at(email):
-    assert "@" in email
-
-# Multi-field strategy (returns dicts)
-@given(row=forge_strategy(["first_name", "email", "city"]))
-def test_row_has_keys(row):
-    assert "first_name" in row
-    assert "email" in row
-    assert "city" in row
+@given(strategy("person.full_name"))
+def test_name_format(name):
+    assert " " in name
 ```
 
-### `strategy(field, locale, **kwargs)`
+</details>
 
-Creates a Hypothesis `SearchStrategy` that yields values from a single DataForge field.
-
-```python
-from hypothesis import given
-from dataforge.compat.hypothesis import strategy
-
-@given(name=strategy("first_name", locale="fr_FR"))
-def test_french_names(name):
-    assert isinstance(name, str) and len(name) > 0
-```
-
-Parameters:
-- `field` — DataForge field name (e.g. `"email"`, `"person.full_name"`)
-- `locale` — locale code (default: `"en_US"`)
-- `**kwargs` — forwarded to the provider method
-
-### `forge_strategy(fields, locale)`
-
-Creates a strategy that yields `dict[str, Any]` with the given field columns.
-
-```python
-@given(row=forge_strategy({"Name": "full_name", "City": "city"}))
-def test_row_types(row):
-    assert isinstance(row["Name"], str)
-    assert isinstance(row["City"], str)
-```
-
----
-
-## HTTP Mock Data Server
-
-Start a zero-dependency HTTP server that returns fake JSON data on every GET request. Useful for frontend prototyping, integration tests, and API mocking.
+<details>
+<summary><strong>HTTP Mock Data Server</strong> — Zero-dependency JSON API</summary>
 
 ```bash
-# Start the server (default: port 8080)
-dataforge --serve first_name email city
-
-# Custom port and row count
-dataforge --serve --port 3000 --count 50 first_name email city
-
-# With a seed for reproducible responses
-dataforge --serve --seed 42 --port 8080 first_name email city
-
-# Custom column names
-dataforge --serve Name=full_name Email=email City=city
+dataforge --serve --port 8080
+curl http://localhost:8080/api/users?count=10
 ```
 
-### Endpoints
+</details>
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/?count=N` | Returns *N* rows as a JSON array (default: `--count` value) |
-
-### Response Format
-
-```bash
-$ curl "http://localhost:8080/?count=3"
-```
-
-```json
-[
-  {"first_name": "James", "email": "james.smith@gmail.com", "city": "Chicago"},
-  {"first_name": "Maria", "email": "maria.garcia@yahoo.com", "city": "Houston"},
-  {"first_name": "David", "email": "david.jones@outlook.com", "city": "Phoenix"}
-]
-```
-
-Response headers include `Content-Type: application/json; charset=utf-8` and `Access-Control-Allow-Origin: *` for CORS support.
-
-### Schema File
-
-Load field definitions from a JSON, YAML, or TOML schema file:
-
-```bash
-dataforge --serve --schema my_schema.yaml --port 8080
-```
-
----
-
-## XLSX Export
-
-Export schema data to Excel `.xlsx` files. Requires `pip install openpyxl`.
+<details>
+<summary><strong>XLSX Export</strong> — Excel spreadsheet generation</summary>
 
 ```python
-from dataforge import DataForge
-
-forge = DataForge(seed=42)
-
-# Via Schema
-schema = forge.schema(["first_name", "last_name", "email", "city"])
-rows_written = schema.to_excel("users.xlsx", count=1000, sheet_name="Users")
-
-# Via DataForge convenience method
-rows_written = forge.to_excel(
-    fields={"Name": "full_name", "Email": "email", "City": "city"},
-    path="contacts.xlsx",
-    count=5000,
-    sheet_name="Contacts",
-)
+schema.to_excel(count=5000, path="users.xlsx")
 ```
 
-### Parameters
+Requires `openpyxl`.
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `path` | `str` | (required) | Output file path |
-| `count` | `int` | `10` | Number of rows to generate |
-| `sheet_name` | `str` | `"Sheet1"` | Excel worksheet name |
+</details>
 
-The writer uses `openpyxl`'s write-only mode (`Workbook(write_only=True)`) for memory-efficient streaming of large datasets. Returns the number of rows written.
-
----
-
-## Statistical Distribution Fitting
-
-The schema inferrer can detect statistical distributions in numeric columns and report the best-fitting distribution with its parameters. This runs automatically during `infer_schema()` when columns contain at least 20 numeric values.
+<details>
+<summary><strong>Statistical Distribution Fitting</strong> — Infer distributions from data</summary>
 
 ```python
-from dataforge import DataForge
-from dataforge.inference import SchemaInferrer
+from dataforge.inference import fit_distribution
 
-forge = DataForge(seed=42)
-inferrer = SchemaInferrer(forge)
-
-# Infer from data with numeric columns
-schema = inferrer.from_records([
-    {"value": 2.3, "count": 5},
-    {"value": 1.8, "count": 12},
-    # ... (20+ records for distribution detection)
-])
-
-# Inspect detected distributions
-for analysis in inferrer.analyses:
-    if analysis.distribution:
-        print(f"{analysis.name}: {analysis.distribution}")
-        # "value: {'name': 'normal', 'params': {'mean': 2.1, 'std': 0.4}}"
+fit = fit_distribution(data)
+# Normal, LogNormal, Exponential, Beta, Zipf
 ```
 
-### Supported Distributions
+</details>
 
-| Distribution | Condition | Parameters |
-|-------------|-----------|------------|
-| Normal | Always tested | `mean`, `std` |
-| LogNormal | All values > 0 | `mu`, `sigma` (of log-values) |
-| Exponential | All values > 0, skew > 1.5 | `rate` |
-| Beta | All values in (0, 1] | `alpha`, `beta` |
-| Zipf | Integer values >= 1, 5+ distinct ranks | `s` (exponent) |
-
-### How It Works
-
-1. **Single-pass moment accumulation** — computes mean, variance, skewness, and kurtosis in one pass over the data
-2. **Jarque-Bera test** — used for Normal and LogNormal goodness-of-fit testing
-3. **Least-squares R^2** — used for Zipf power-law fitting on log-rank vs log-frequency
-4. **Best fit selection** — each candidate distribution gets a score; the lowest score wins
-
-Distribution results are stored in `ColumnAnalysis.distribution` and included in `inferrer.describe()` output.
-
-### Convenience Methods
+<details>
+<summary><strong>Time-Series Generation</strong> — Trends, seasonality, anomalies</summary>
 
 ```python
-# Via DataForge
+from dataforge.timeseries import TimeSeriesGenerator
+
+ts = TimeSeriesGenerator(forge)
+data = ts.generate(points=1000, trend="linear", seasonality="daily", noise=0.1)
+```
+
+</details>
+
+<details>
+<summary><strong>Schema Inference</strong> — Auto-detect types from CSV, DataFrames, records</summary>
+
+```python
 schema = forge.infer_schema(records)
-schema = forge.infer_schema_from_csv("data.csv", max_rows=1000)
+schema = forge.infer_schema_from_csv("data.csv")
 ```
 
----
+</details>
 
-## Time-Series Generation
-
-Generate synthetic time-series data with configurable trends, seasonality, noise, anomalies, regime changes, missing data, and spikes.
+<details>
+<summary><strong>Chaos Testing</strong> — Inject data quality issues</summary>
 
 ```python
-from dataforge import DataForge
-from dataforge.timeseries import TimeSeriesSchema
+from dataforge.chaos import ChaosConfig
 
-forge = DataForge(seed=42)
-
-ts = TimeSeriesSchema(
-    forge,
-    start="2024-01-01",
-    end="2024-03-31",
-    interval="1h",
-    fields={
-        "temperature": {
-            "base": 20.0,
-            "trend": 0.01,
-            "seasonality": {"period": 24, "amplitude": 5.0},
-            "noise": 0.5,
-        },
-        "humidity": {
-            "base": 60.0,
-            "trend": -0.005,
-            "seasonality": {"period": 24, "amplitude": 10.0},
-            "noise": 2.0,
-        },
-    },
-)
-
-# Generate all rows at once
-rows = ts.generate()  # list[dict] with "timestamp", "temperature", "humidity"
-
-# Stream for large datasets
-for row in ts.stream():
-    process(row)
-
-# Export directly
-ts.to_csv("sensor_data.csv")
-ts.to_json("sensor_data.json")
-df = ts.to_dataframe()  # requires pandas
+chaos = ChaosConfig(null_rate=0.05, type_mismatch_rate=0.02)
+rows = forge.with_chaos(chaos).to_dict(fields=["first_name", "email"], count=1000)
 ```
 
-### Field Configuration
+</details>
 
-Each field supports the following options:
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `base` | `float` | Starting value (default: `0.0`) |
-| `trend` | `float` | Linear trend per time step (default: `0.0`) |
-| `seasonality` | `dict` | `{"period": N, "amplitude": A}` — sinusoidal cycle |
-| `noise` | `float` | Gaussian noise standard deviation (default: `0.0`) |
-| `anomaly_rate` | `float` | Fraction of points with anomalous spikes (0–1) |
-| `anomaly_scale` | `float` | Multiplier for anomaly magnitude |
-| `regime_changes` | `int` | Number of abrupt level shifts |
-| `missing_rate` | `float` | Fraction of values replaced with `None` |
-| `spike_rate` | `float` | Fraction of sudden sharp spikes |
-| `clamp` | `tuple` | `(min, max)` — clamp output to range |
-
-### Intervals
-
-Supported interval suffixes: `s` (seconds), `m` (minutes), `h` (hours), `d` (days), `w` (weeks). Examples: `"30s"`, `"5m"`, `"1h"`, `"1d"`, `"1w"`.
-
-### Convenience Method
+<details>
+<summary><strong>Constraint Engine</strong> — Geographic, temporal, statistical constraints</summary>
 
 ```python
-# Via the DataForge instance
-ts = forge.timeseries(
-    start="2024-01-01",
-    end="2024-12-31",
-    interval="1h",
-    fields={"temperature": {"base": 20.0, "noise": 1.0}},
-)
-```
+from dataforge.constraints import Constraint
 
----
-
-## Schema Inference
-
-Automatically detect column types and semantic patterns from existing data, then generate matching fake data.
-
-```python
-from dataforge import DataForge
-from dataforge.inference import SchemaInferrer
-
-forge = DataForge(seed=42)
-inferrer = SchemaInferrer(forge)
-
-# From a list of dicts
-schema = inferrer.from_records([
-    {"name": "Alice", "email": "alice@test.com", "age": 30},
-    {"name": "Bob", "email": "bob@test.com", "age": 25},
-])
-fake_rows = schema.generate(count=1000)
-
-# From a CSV file
-schema = inferrer.from_csv("customers.csv")
-
-# From a pandas DataFrame
-schema = inferrer.from_dataframe(df)
-
-# Inspect what was detected
-print(inferrer.describe())
-```
-
-### Detected Semantic Types
-
-The inferrer recognizes 16+ semantic types via regex matching and column name heuristics:
-
-| Type | Detection Method |
-|------|-----------------|
-| Email | Regex + column name |
-| Phone | Regex pattern |
-| UUID | UUID v4/v7 format |
-| IPv4 / IPv6 | IP address pattern |
-| URL | `http(s)://` prefix |
-| SSN | `NNN-NN-NNNN` pattern |
-| Date / DateTime | ISO format detection |
-| Credit card | Luhn-valid digit strings |
-| Boolean | `true`/`false` values |
-| Integer / Float | Numeric detection |
-| Zip code | Column name heuristic |
-| First / Last name | Column name heuristic |
-| City / State / Country | Column name heuristic |
-
-### Convenience Method
-
-```python
-# Via the DataForge instance
-schema = forge.infer_schema([
-    {"name": "Alice", "email": "alice@test.com"},
-    {"name": "Bob", "email": "bob@test.com"},
-])
-```
-
----
-
-## Chaos Testing
-
-Inject realistic data quality problems into generated data for testing pipeline resilience. All rates are per-cell probabilities.
-
-```python
-from dataforge import DataForge
-from dataforge.chaos import ChaosTransformer
-
-forge = DataForge(seed=42)
-schema = forge.schema(["first_name", "email", "city"])
-rows = schema.generate(count=1000)
-
-# Configure injection rates
-chaos = ChaosTransformer(
-    null_rate=0.05,          # 5% of cells become None
-    type_mismatch_rate=0.02, # 2% get wrong types (int→str, etc.)
-    boundary_rate=0.01,      # 1% get boundary values ("", "NaN", MAX_INT)
-    duplicate_rate=0.03,     # 3% of rows are duplicated
-    whitespace_rate=0.02,    # 2% get whitespace issues
-    encoding_rate=0.01,      # 1% get encoding chaos (mojibake, BOM)
-    format_rate=0.02,        # 2% get format inconsistencies
-    truncation_rate=0.01,    # 1% get truncated values
-)
-
-dirty_rows = chaos.transform(rows)
-```
-
-### Injection Types
-
-| Type | Description | Examples |
-|------|-------------|---------|
-| `null` | Replace value with `None` | `None` |
-| `type_mismatch` | Replace with wrong type | `123` → `"123"`, `"foo"` → `0` |
-| `boundary` | Replace with boundary values | `""`, `"NaN"`, `"null"`, `sys.maxsize` |
-| `duplicate` | Duplicate entire rows | Row appears 2+ times |
-| `whitespace` | Inject whitespace issues | Leading/trailing spaces, tabs, newlines |
-| `encoding` | Inject encoding problems | Mojibake, BOM markers, zero-width chars |
-| `format` | Inconsistent formatting | Mixed case, date format variations |
-| `truncation` | Truncate string values | `"Hello World"` → `"Hello"` |
-
-### Schema Integration
-
-Apply chaos directly when generating schema data:
-
-```python
-chaos = ChaosTransformer(null_rate=0.1, type_mismatch_rate=0.05)
-schema = forge.schema(["first_name", "email"], chaos=chaos)
-dirty_rows = schema.generate(count=1000)  # chaos applied automatically
-```
-
-### Targeting Specific Columns
-
-```python
-chaos = ChaosTransformer(
-    null_rate=0.1,
-    columns=["email", "phone"],  # only affect these columns
-)
-```
-
----
-
-## Constraint Engine
-
-Generate data with inter-field dependencies: geographic hierarchies, temporal ordering, statistical correlation, conditional value pools, and range constraints.
-
-Constraints are defined via dict-based field specs in `forge.schema()`. The engine builds a dependency DAG, performs topological sort, and uses a two-pass strategy: independent fields are batched column-first (fast path), then dependent fields are resolved row-by-row.
-
-### Geographic Hierarchy
-
-Generate valid country → state → city combinations for 10 countries:
-
-```python
-forge = DataForge(seed=42)
 schema = forge.schema({
-    "country": "country",
-    "state": {"field": "address.state", "depends_on": "country"},
-    "city": {"field": "address.city", "depends_on": "state"},
-})
-rows = schema.generate(count=100)
-# Each row has a valid country/state/city combination
-```
-
-Supported countries: US, GB, AU, CA, DE, FR, ES, IT, BR, NL.
-
-### Temporal Constraint
-
-Ensure one date always comes after another:
-
-```python
-schema = forge.schema({
-    "start_date": "date",
-    "end_date": {
-        "field": "date",
-        "temporal": "after",
-        "reference": "start_date",
-    },
-})
-rows = schema.generate(count=100)
-# end_date is always after start_date
-```
-
-### Statistical Correlation (Cholesky)
-
-Generate correlated numeric fields using a Cholesky decomposition:
-
-```python
-schema = forge.schema({
-    "height": "float",
-    "weight": {
-        "field": "float",
-        "correlate": "height",
-        "correlation": 0.85,  # Pearson r ≈ 0.85
-    },
-})
-rows = schema.generate(count=1000)
-```
-
-### Conditional Value Pools
-
-Assign values based on another field's value:
-
-```python
-schema = forge.schema({
-    "department": "random_element",
-    "job_title": {
-        "field": "job_title",
-        "conditional_on": "department",
-        "pools": {
-            "Engineering": ["Software Engineer", "DevOps Lead", "QA Analyst"],
-            "Marketing": ["Brand Manager", "SEO Specialist", "Content Writer"],
-            "Sales": ["Account Executive", "Sales Director", "BDR"],
-        },
-    },
+    "City": "address.city",
+    "State": Constraint("address.state", depends_on="City"),
 })
 ```
 
-### Range Constraint
+</details>
 
-Clamp numeric fields within bounds:
-
-```python
-schema = forge.schema({
-    "salary": {
-        "field": "float",
-        "range": {"min": 30000, "max": 200000},
-    },
-})
-```
-
----
-
-## PII Anonymization
-
-Replace personally identifiable information with realistic fake data using deterministic HMAC-SHA256 seeding. The same real value always maps to the same fake value across tables and runs, preserving referential integrity.
+<details>
+<summary><strong>PII Anonymization</strong> — HMAC-SHA256 with format preservation</summary>
 
 ```python
-from dataforge import DataForge
 from dataforge.anonymizer import Anonymizer
 
-forge = DataForge(seed=42)
-anon = Anonymizer(forge, secret="my-secret-key")
-
-# Anonymize a list of dicts
-original = [
-    {"name": "Alice Smith", "email": "alice@real.com", "ssn": "123-45-6789"},
-    {"name": "Bob Jones", "email": "bob@real.com", "ssn": "987-65-4321"},
-]
-anonymized = anon.anonymize(original, fields={
-    "name": "full_name",
-    "email": "email",
-    "ssn": "ssn",
-})
-# {"name": "James Wilson", "email": "james.wilson@gmail.com", "ssn": "456-78-9012"}
+anon = Anonymizer(key="secret")
+anon.anonymize(rows, fields=["email", "ssn"])
 ```
 
-### Referential Integrity
+</details>
 
-Because seeding is deterministic, the same input always produces the same output. If `"alice@real.com"` appears in both a `users` table and an `orders` table, it maps to the same fake email in both:
-
-```python
-# Table 1: users
-users = anon.anonymize(user_records, fields={"email": "email"})
-
-# Table 2: orders (same "alice@real.com" maps to same fake email)
-orders = anon.anonymize(order_records, fields={"customer_email": "email"})
-```
-
-### Format-Preserving Output
-
-Emails retain `user@domain.tld` structure. Phone numbers retain digit patterns. SSNs retain `NNN-NN-NNNN` format.
-
-### Streaming CSV Anonymization
-
-For large files that don't fit in memory:
+<details>
+<summary><strong>Database Seeding</strong> — SQLAlchemy-powered bulk insertion</summary>
 
 ```python
-anon.anonymize_csv(
-    "input.csv",
-    "output.csv",
-    fields={"name": "full_name", "email": "email", "ssn": "ssn"},
-)
-```
-
----
-
-## Database Seeding
-
-Populate databases with realistic fake data using SQLAlchemy introspection. Requires `pip install dataforge-py[db]`.
-
-```python
-from dataforge import DataForge
 from dataforge.seeder import DatabaseSeeder
 
-forge = DataForge(seed=42)
-seeder = DatabaseSeeder(forge, "sqlite:///test.db")
-
-# Seed a single table (auto-detects column types)
-seeder.seed_table("users", count=1000)
-
-# Seed with field overrides
-seeder.seed_table("users", count=1000, field_overrides={
-    "email": "email",
-    "created_at": "datetime",
-})
-
-# Seed related tables with foreign key resolution
-seeder.seed_relational({
-    "users": {"count": 100},
-    "orders": {"count": 500, "parent": "users"},
-    "order_items": {"count": 2000, "parent": "orders"},
-})
+seeder = DatabaseSeeder(engine)
+seeder.seed(User, count=10_000)
 ```
 
-### How It Works
+</details>
 
-1. **Introspection** — Reads table schemas via SQLAlchemy `inspect()`, maps column names and types to DataForge providers using heuristic matching
-2. **Field Override** — Override any column with a specific DataForge field name
-3. **Relational Seeding** — `seed_relational()` resolves parent→child FK relationships and populates tables in correct dependency order
-
-### Dialect Optimizations
-
-| Dialect | Optimization |
-|---------|-------------|
-| SQLite | Disables journal mode and synchronous writes for faster inserts |
-| MySQL | Temporarily disables FK checks and uses multi-row INSERT |
-| PostgreSQL | Uses standard batched inserts |
-
----
-
-## OpenAPI / JSON Schema Import
-
-Generate fake data conforming to OpenAPI 3.x specs or JSON Schema definitions. Resolves `$ref` references and maps types/formats to DataForge providers.
+<details>
+<summary><strong>OpenAPI / JSON Schema Import</strong> — Generate from API specs</summary>
 
 ```python
-from dataforge import DataForge
-from dataforge.openapi import OpenAPIParser
-
-forge = DataForge(seed=42)
-parser = OpenAPIParser(forge)
-
-# From an OpenAPI spec file (YAML or JSON)
-schemas = parser.from_file("openapi.yaml")
-users = schemas["User"].generate(count=100)
-
-# From an OpenAPI spec dict
-schemas = parser.from_openapi(spec_dict)
-
-# From a standalone JSON Schema
-schema = parser.from_json_schema({
-    "type": "object",
-    "properties": {
-        "name": {"type": "string"},
-        "email": {"type": "string", "format": "email"},
-        "age": {"type": "integer", "minimum": 18, "maximum": 99},
-    },
-})
-rows = schema.generate(count=50)
+schema = forge.schema_from_openapi("openapi.json")
+schema = forge.schema_from_json_schema("schema.json")
 ```
 
-### Type and Format Mapping
+</details>
 
-| JSON Schema Type | Format | DataForge Field |
-|-----------------|--------|-----------------|
-| `string` | `email` | `email` |
-| `string` | `uri` / `url` | `url` |
-| `string` | `hostname` | `hostname` |
-| `string` | `ipv4` / `ipv6` | `ipv4` / `ipv6` |
-| `string` | `uuid` | `uuid4` |
-| `string` | `date` | `date` |
-| `string` | `date-time` | `datetime` |
-| `string` | (none) | `lorem.sentence` |
-| `integer` | — | random int (respects `minimum`/`maximum`) |
-| `number` | — | random float (respects `minimum`/`maximum`) |
-| `boolean` | — | `boolean` |
-
-### $ref Resolution
-
-Nested `$ref` references (e.g., `"$ref": "#/components/schemas/Address"`) are resolved automatically, supporting deeply nested and recursive schemas.
-
----
-
-## Streaming to Message Queues
-
-Emit generated data to HTTP endpoints, Kafka topics, or RabbitMQ queues with built-in rate limiting. Core HTTP streaming uses stdlib only; Kafka and RabbitMQ require optional extras.
-
-### HTTP Streaming (zero dependencies)
+<details>
+<summary><strong>Streaming to Message Queues</strong> — HTTP, Kafka, RabbitMQ</summary>
 
 ```python
-from dataforge import DataForge
-from dataforge.streaming import HttpEmitter, stream_to_emitter
-
-forge = DataForge(seed=42)
-schema = forge.schema(["first_name", "email", "city"])
-
-emitter = HttpEmitter(
-    url="https://api.example.com/ingest",
-    headers={"Authorization": "Bearer token"},
-)
-
-stream_to_emitter(schema, emitter, count=10_000)
+forge.stream_to_http(fields=["first_name"], url="http://api.example.com", count=1000)
+forge.stream_to_kafka(fields=["first_name"], topic="users", count=1000)
+forge.stream_to_rabbitmq(fields=["first_name"], queue="users", count=1000)
 ```
 
-### Kafka Streaming
+</details>
 
-Requires `pip install dataforge-py[kafka]`:
-
-```python
-from dataforge.streaming import KafkaEmitter
-
-emitter = KafkaEmitter(
-    bootstrap_servers="localhost:9092",
-    topic="users",
-)
-stream_to_emitter(schema, emitter, count=100_000)
-```
-
-### RabbitMQ Streaming
-
-Requires `pip install dataforge-py[rabbitmq]`:
-
-```python
-from dataforge.streaming import RabbitMQEmitter
-
-emitter = RabbitMQEmitter(
-    host="localhost",
-    queue="users",
-)
-stream_to_emitter(schema, emitter, count=100_000)
-```
-
-### Rate Limiting
-
-Token-bucket rate limiter for controlling throughput:
-
-```python
-from dataforge.streaming import TokenBucketRateLimiter
-
-limiter = TokenBucketRateLimiter(rate=100, burst=20)  # 100 msgs/sec, burst of 20
-stream_to_emitter(schema, emitter, count=10_000, rate_limiter=limiter)
-```
-
-### Custom Emitters
-
-Extend the abstract `StreamEmitter` base class:
-
-```python
-from dataforge.streaming import StreamEmitter
-
-class MyEmitter(StreamEmitter):
-    def emit(self, record: dict) -> None:
-        # Send record to your system
-        ...
-
-    def flush(self) -> None:
-        # Flush any buffered records
-        ...
-
-    def close(self) -> None:
-        # Clean up resources
-        ...
-```
-
----
-
-## Interactive TUI
-
-A Textual-based terminal UI for browsing providers, building schemas, previewing data, and exporting. Requires `pip install dataforge-py[tui]`.
+<details>
+<summary><strong>Interactive TUI</strong> — Terminal UI for browsing and exporting</summary>
 
 ```bash
-# Launch the TUI
-python -m dataforge.tui
-
-# Or from Python
-from dataforge.tui import DataForgeTUI
-app = DataForgeTUI()
-app.run()
+dataforge --tui
 ```
 
-### Layout
+Requires `textual`.
 
-The TUI has a three-panel layout:
+</details>
 
-1. **Left panel** — Provider/field tree browser
-2. **Center panel** — Data preview table
-3. **Right panel** — Schema configuration
+---
 
-### Keyboard Shortcuts
+## Integrations
 
-| Key | Action |
-|-----|--------|
-| `a` | Add selected field to schema |
-| `r` | Remove field from schema |
-| `g` | Generate preview data |
-| `e` | Open export dialog |
-| `c` | Clear schema |
-| `q` | Quit |
+### PyArrow
 
-### Export Formats
+```python
+table = forge.to_arrow(fields=["first_name", "email"], count=1_000_000)
+forge.to_parquet(fields=["first_name", "email"], path="users.parquet", count=1_000_000)
+```
 
-The export dialog supports CSV, JSON, JSONL, and SQL output with configurable row counts and file paths.
+### Polars
+
+```python
+df = forge.to_polars(fields=["first_name", "email"], count=1_000_000)
+```
+
+### Pydantic
+
+```python
+from pydantic import BaseModel
+
+class User(BaseModel):
+    first_name: str
+    email: str
+
+schema = forge.schema_from_pydantic(User)
+rows = schema.generate(1000)
+```
+
+### SQLAlchemy
+
+```python
+schema = forge.schema_from_sqlalchemy(User)
+rows = schema.generate(1000)  # primary keys auto-skipped
+```
+
+---
+
+## Benchmarks
+
+Measured on a standard developer machine:
+
+| Operation | Throughput |
+|-----------|-----------|
+| `misc.boolean()` | **8.5M items/s** |
+| `person.first_name()` | **3.7M items/s** |
+| `address.city()` | **3.4M items/s** |
+| `person.first_name(count=1M)` | **15M items/s** |
+| `dt.timezone(count=1M)` | **18M items/s** |
+| `network.user_agent(count=1M)` | **18M items/s** |
+| Schema `generate(100K)` | **343K rows/s** |
+| Schema `to_csv(100K)` | **312K rows/s** |
+
+Run locally:
+
+```bash
+uv run python benchmark.py
+uv run python benchmark.py --compare  # against saved baseline
+```
+
+<details>
+<summary><strong>Performance architecture details</strong></summary>
+
+- **Columnar generation** — Schema generates column-first, then transposes to rows
+- **`csv.writer` over `csv.DictWriter`** — ~36% faster CSV writes
+- **Cumulative weight caching** — weighted choices cache at module level
+- **Bulk null injection** — `binomialvariate()` + `random.sample()` instead of per-element flips
+- **Vectorized batch paths** — internet, datetime, finance providers use dedicated batch code
+- **`deque` for BFS traversal** — O(1) `popleft()` in relational generation
+- **Adaptive unique over-sampling** — scales with observed collision rate
+- **In-place list mutation** — `numerify()`/`bothify()` avoid re-allocation
+
+</details>
 
 ---
 
 ## Examples
 
-The [`examples/`](examples/) directory contains comprehensive real-world usage examples:
+The [`examples/`](examples/) directory contains 21 runnable scripts covering every feature:
 
-| File | Description |
-|------|-------------|
-| [`01_timeseries.py`](examples/01_timeseries.py) | IoT sensor monitoring with regime changes and multi-sensor setups |
-| [`02_schema_inference.py`](examples/02_schema_inference.py) | Auto-detect schemas from records and CSV files |
-| [`03_chaos_testing.py`](examples/03_chaos_testing.py) | Inject data quality issues for pipeline resilience testing |
-| [`04_constraints.py`](examples/04_constraints.py) | Geographic hierarchies, temporal, correlation, and conditional constraints |
-| [`05_anonymizer.py`](examples/05_anonymizer.py) | PII masking with referential integrity and streaming CSV |
-| [`06_database_seeding.py`](examples/06_database_seeding.py) | SQLAlchemy introspection and relational seeding |
-| [`07_openapi_import.py`](examples/07_openapi_import.py) | Generate data from JSON Schema and OpenAPI specs |
-| [`08_streaming.py`](examples/08_streaming.py) | HTTP/Kafka/RabbitMQ streaming with rate limiting |
-| [`09_tui.py`](examples/09_tui.py) | Interactive TUI launch and keyboard shortcuts |
-| [`10_real_world_scenarios.py`](examples/10_real_world_scenarios.py) | Combined scenarios: e-commerce, healthcare, IoT, API testing |
-| [`11_faker_compat.py`](examples/11_faker_compat.py) | Faker compatibility layer — migrating from faker to DataForge |
-| [`12_multi_locale.py`](examples/12_multi_locale.py) | Multi-locale data generation for internationalized test data |
-| [`13_dynamic_fields.py`](examples/13_dynamic_fields.py) | Dynamic fields with `define()` — custom data pools and generators |
-| [`14_transform_pipelines.py`](examples/14_transform_pipelines.py) | Transform pipelines with `pipe()` — post-generation data transformation |
-| [`15_type_driven_schema.py`](examples/15_type_driven_schema.py) | Type-driven schema generation from dataclasses and TypedDicts |
-| [`16_data_validation.py`](examples/16_data_validation.py) | Data contract validation — ensuring data quality with semantic rules |
-| [`17_hypothesis_bridge.py`](examples/17_hypothesis_bridge.py) | Hypothesis strategy bridge — property-based testing with DataForge |
-| [`18_mock_server.py`](examples/18_mock_server.py) | HTTP mock data server — serving fake data over HTTP |
-| [`19_xlsx_export.py`](examples/19_xlsx_export.py) | XLSX export — generating Excel spreadsheets with DataForge schemas |
-| [`20_distribution_fitting.py`](examples/20_distribution_fitting.py) | Distribution fitting — inferring statistical distributions from data |
-| [`21_advanced_scenarios.py`](examples/21_advanced_scenarios.py) | Advanced multi-feature workflows combining DataForge capabilities |
+| File | Topic |
+|------|-------|
+| [`01_timeseries.py`](examples/01_timeseries.py) | IoT sensor monitoring with regime changes |
+| [`02_schema_inference.py`](examples/02_schema_inference.py) | Auto-detect schemas from records and CSV |
+| [`03_chaos_testing.py`](examples/03_chaos_testing.py) | Data quality issue injection |
+| [`04_constraints.py`](examples/04_constraints.py) | Geographic, temporal, correlation constraints |
+| [`05_anonymizer.py`](examples/05_anonymizer.py) | PII masking with referential integrity |
+| [`06_database_seeding.py`](examples/06_database_seeding.py) | SQLAlchemy introspection and seeding |
+| [`07_openapi_import.py`](examples/07_openapi_import.py) | Generate from JSON Schema / OpenAPI specs |
+| [`08_streaming.py`](examples/08_streaming.py) | HTTP/Kafka/RabbitMQ streaming |
+| [`09_tui.py`](examples/09_tui.py) | Interactive TUI |
+| [`10_real_world_scenarios.py`](examples/10_real_world_scenarios.py) | E-commerce, healthcare, IoT, API testing |
+| [`11_faker_compat.py`](examples/11_faker_compat.py) | Faker migration |
+| [`12_multi_locale.py`](examples/12_multi_locale.py) | Multi-locale generation |
+| [`13_dynamic_fields.py`](examples/13_dynamic_fields.py) | Custom data pools with `define()` |
+| [`14_transform_pipelines.py`](examples/14_transform_pipelines.py) | Transform chains with `pipe()` |
+| [`15_type_driven_schema.py`](examples/15_type_driven_schema.py) | Dataclass / TypedDict schemas |
+| [`16_data_validation.py`](examples/16_data_validation.py) | Data contract validation |
+| [`17_hypothesis_bridge.py`](examples/17_hypothesis_bridge.py) | Hypothesis property-based testing |
+| [`18_mock_server.py`](examples/18_mock_server.py) | HTTP mock data server |
+| [`19_xlsx_export.py`](examples/19_xlsx_export.py) | Excel spreadsheet generation |
+| [`20_distribution_fitting.py`](examples/20_distribution_fitting.py) | Statistical distribution inference |
+| [`21_advanced_scenarios.py`](examples/21_advanced_scenarios.py) | Multi-feature workflows |
 
-## Benchmarks
+---
 
-DataForge is built for speed. Results from a standard developer machine:
-
-### Single Item Generation (10K iterations)
-
-| Operation | Speed |
-|-----------|-------|
-| `misc.boolean()` | **8.5M items/s** |
-| `person.first_name()` | **3.7M items/s** |
-| `address.city()` | **3.4M items/s** |
-| `dt.timezone()` | **3.6M items/s** |
-| `network.port()` | **2.6M items/s** |
-| `network.user_agent()` | **3.3M items/s** |
-| `file.file_name()` | **1.5M items/s** |
-| `dt.unix_timestamp()` | **2.0M items/s** |
-| `finance.bic()` | **1.2M items/s** |
-
-### Batch Generation (1M items)
-
-| Operation | Speed |
-|-----------|-------|
-| `person.first_name(count=1M)` | **15M items/s** |
-| `address.city(count=1M)` | **14M items/s** |
-| `dt.timezone(count=1M)` | **18M items/s** |
-| `network.user_agent(count=1M)` | **18M items/s** |
-| `person.full_name(count=1M)` | **4.2M items/s** |
-| `address.country(count=1M)` | **15M items/s** |
-| `file.file_name(count=1M)` | **1.6M items/s** |
-| `finance.bic(count=1M)` | **1.3M items/s** |
-
-### Schema API (5 columns)
-
-| Operation | Speed |
-|-----------|-------|
-| `generate(100K)` | **343K rows/s** |
-| `to_csv(100K)` | **312K rows/s** |
-| `stream(100K)` | **359K rows/s** |
-
-Run benchmarks locally:
+## Installation
 
 ```bash
-uv run python benchmark.py
-uv run python benchmark.py --compare  # compare against saved baseline
+pip install dataforge-py        # zero dependencies
+uv add dataforge-py             # with uv
 ```
 
-### Performance Architecture
+Optional extras:
 
-DataForge achieves its throughput through several layered optimizations:
+```bash
+pip install dataforge-py[db]       # SQLAlchemy (database seeding)
+pip install dataforge-py[kafka]    # confluent-kafka
+pip install dataforge-py[rabbitmq] # pika
+pip install dataforge-py[tui]      # textual (interactive TUI)
+pip install dataforge-py[all]      # everything
+```
 
-- **Columnar generation** — Schema generates data column-first, then
-  transposes to rows, enabling vectorized provider calls
-- **`csv.writer` over `csv.DictWriter`** — bulk export skips per-row
-  dict overhead, yielding ~36% faster CSV writes
-- **Cumulative weight caching** — weighted random choices cache
-  cumulative weight arrays at module level, avoiding recomputation
-- **Bulk null injection** — uses `binomialvariate()` + `random.sample()`
-  instead of per-element coin flips
-- **Vectorized batch paths** — internet, datetime, and finance providers
-  use dedicated batch code paths that avoid per-item method overhead
-- **`deque` for BFS traversal** — relational generation uses O(1)
-  `popleft()` instead of O(n) `list.pop(0)`
-- **Adaptive unique over-sampling** — starts at 20% extra and scales
-  with observed collision rate to minimize retry rounds
-- **In-place list mutation** — `numerify()`/`bothify()` build lists
-  once and mutate in place instead of appending
+Optional integrations (install separately):
 
-## CI/CD
+```bash
+pip install pyarrow polars pandas pydantic sqlalchemy openpyxl hypothesis
+```
 
-DataForge uses GitHub Actions for continuous integration and delivery:
+**Requires Python >= 3.12.**
 
-| Workflow | Trigger | Description |
-|----------|---------|-------------|
-| **CI** | Push/PR to main | Commitlint + Ruff lint/format + pytest matrix (Python 3.12, 3.13) |
-| **Integrations** | Push/PR to main | Tests with optional deps (PyArrow, Polars, Pydantic, SQLAlchemy) |
-| **Benchmarks** | Push to main | Runs `benchmark.py --compare`, uploads results as artifact |
-| **Release** | Push to main | release-please creates/updates Release PR; on merge, publishes to PyPI |
-
-### Release process
-
-1. All commits to `main` use [Conventional Commits](https://www.conventionalcommits.org/) format
-2. `release-please` automatically maintains a living Release PR that bundles changes
-3. Merging the Release PR creates a bare numeric version tag (`0.3.0`, etc.) and a GitHub Release
-4. The publish job within the same workflow builds and pushes to PyPI via OIDC trusted publishing
-
-### Setup requirements
-
-- **`pypi` environment** — GitHub Environment configured for PyPI OIDC trusted publishing
+---
 
 ## Contributing
 
-Contributions are welcome. Please follow these guidelines:
-
-### Development setup
+Contributions welcome. See an issue? Open one. Want to add a provider or locale? PRs appreciated.
 
 ```bash
-git clone https://github.com/yourusername/dataforge.git
-cd dataforge
-uv sync          # install all dependencies
-uv run pytest    # run tests (1870 tests)
-uv run ruff check src/ tests/        # lint
-uv run ruff format --check src/ tests/ # format check
-uv run python benchmark.py           # run benchmarks
+git clone https://github.com/Sanady/dataforge-py.git
+cd dataforge-py
+uv sync
+uv run pytest          # 1870 tests
+uv run ruff check src/ tests/
+uv run python benchmark.py
 ```
 
-### Commit messages
+All commits use [Conventional Commits](https://www.conventionalcommits.org/). Performance is the primary selling point — all PRs must pass `benchmark.py --compare` without regressions.
 
-This project enforces [Conventional Commits](https://www.conventionalcommits.org/). All commit messages must follow this format:
+If DataForge saves you time, a star helps others find it.
 
-```
-<type>: <description>
-
-[optional body]
-```
-
-| Type | Use when |
-|------|----------|
-| `feat` | Adding a new feature |
-| `fix` | Fixing a bug |
-| `perf` | Performance improvement |
-| `refactor` | Code restructuring without behavior change |
-| `test` | Adding or updating tests |
-| `docs` | Documentation changes |
-| `chore` | Maintenance tasks (deps, CI config) |
-
-Examples:
-
-```
-feat: add automotive provider with VIN generation
-fix: correct Luhn checksum in credit card numbers
-perf: use getrandbits() bulk approach for UUID generation
-```
-
-### Performance guidelines
-
-Performance is the primary selling point of DataForge. All contributions must:
-
-1. **Never regress benchmarks** — run `uv run python benchmark.py --compare` before submitting
-2. **Use `__slots__`** on all classes
-3. **Use immutable tuples** for static data (never lists)
-4. **Implement batch paths** — every public method must accept `count=N` with an optimized batch code path
-5. **Use `@overload` triplets** for type narrowing (no args, `Literal[1]`, `int`)
-6. **Inline hot paths** — avoid unnecessary function calls in batch loops
-
-### Pull request process
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes with conventional commit messages
-4. Ensure all tests pass and benchmarks don't regress
-5. Submit a PR using the provided template
-
-## Copy
-
-Create an independent copy of a `DataForge` instance:
-
-```python
-forge2 = forge.copy(seed=99)  # new instance, same locale, different seed
-forge3 = forge.copy()          # new instance, same locale, no seed
-```
+---
 
 ## License
 
-MIT
+[MIT](LICENSE)
