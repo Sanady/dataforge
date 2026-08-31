@@ -1,7 +1,7 @@
 # DataForge
 
 [![PyPI version](https://img.shields.io/pypi/v/dataforge-py.svg)](https://pypi.org/project/dataforge-py/)
-[![Python versions](https://img.shields.io/pypi/pyversions/dataforge-py.svg)](https://pypi.org/project/dataforge-py/)
+[![Python versions](https://img.shields.io/badge/python-%3E%3D3.12-blue.svg)](https://pypi.org/project/dataforge-py/)
 [![CI](https://github.com/Sanady/dataforge-py/actions/workflows/ci.yml/badge.svg)](https://github.com/Sanady/dataforge-py/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
